@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Binary files and executables that will be downloaded in each pull init
+*.dll
+*.exe
+*.bin
+/temp/*
