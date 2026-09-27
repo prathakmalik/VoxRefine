@@ -11,21 +11,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT))
 
-from app.config import PROJECT_ROOT, MODELS_DIR
+from app.config import PROJECT_ROOT, MODELS_DIR, MODEL_MAP, WHISPER_RELEASE_BASE
 
 # Configuration for binaries
-WHISPER_RELEASE_BASE = "https://github.com/ggml-org/whisper.cpp/releases/latest/download"
 BINARIES_MAP = {
     "cuda": "whisper-cublas-bin-x64.zip",
     "cpu": "whisper-bin-x64.zip"
 }
 
-# Model Download URLs (Example mappings - users can edit these)
-# In a real scenario, these would be direct download links to .bin files
-MODEL_DOWNLOADS = {
-    "ggml-medium-q5_0.bin": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin",
-    "ggml-hindi2hinglish-apex-q5_1.bin": "https://huggingface.co/your-model-repo/ggml-hindi2hinglish-apex-q5_1.bin",
-}
+# Model Download URLs are now managed in app/config.MODEL_MAP
+# No local MODEL_DOWNLOADS dictionary needed here.
 
 def check_gpu():
     """Check if NVIDIA GPU is available."""
@@ -79,9 +74,9 @@ def setup_engine():
     models_dir.mkdir(parents=True, exist_ok=True)
 
     print("\n--- Model Selection ---")
-    available_models = list(MODEL_DOWNLOADS.keys())
-    for i, m in enumerate(available_models):
-        print(f"[{i}] {m}")
+    available_models = list(MODEL_MAP.keys())
+    for i, name in enumerate(available_models):
+        print(f"[{i}] {name} ({MODEL_MAP[name]['file']})")
 
     selection = input("Enter model indices to download (comma separated, e.g. 0,1) or 'all': ")
 
@@ -95,10 +90,17 @@ def setup_engine():
         except (ValueError, IndexError):
             print("Invalid selection. Skipping model downloads.")
 
-    for model_file in to_download:
+    for model_name in to_download:
+        model_info = MODEL_MAP[model_name]
+        model_file = model_info['file']
+        url = model_info.get('url')
+
         dest_path = models_dir / model_file
         if not dest_path.exists():
-            download_file(MODEL_DOWNLOADS[model_file], dest_path)
+            if url:
+                download_file(url, dest_path)
+            else:
+                print(f"No download URL provided for {model_name}. Please add it manually to engine/models/{model_file}")
         else:
             print(f"{model_file} already exists. Skipping.")
 

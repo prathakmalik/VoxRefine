@@ -33,6 +33,7 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
    ```bash
    uv run python scripts/setup.py
    ```
+   *Note: If the automatic binary download fails, you can manually download the `whisper-bin-x64.zip` (CPU) or `whisper-cublas-bin-x64.zip` (CUDA) from the [Whisper.cpp Releases](https://github.com/ggml-org/whisper.cpp/releases) and extract them into the `engine/` folder.*
 
 ## 🖥️ Usage
 

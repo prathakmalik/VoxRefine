@@ -108,8 +108,12 @@ class TranscriptionPipeline:
         if model_key not in model_map:
             raise ValueError(f"Invalid model key: {model_key}")
 
+        # Handle the new MODEL_MAP structure where value is a dict with 'file' and 'url'
+        model_info = model_map[model_key]
+        model_filename = model_info['file'] if isinstance(model_info, dict) else model_info
+
         # Ensure we have the absolute path to the model file
-        model_filename = model_map[model_key]
+        from app.config import MODELS_DIR
         model_path = str(MODELS_DIR / model_filename) if not os.path.isabs(model_filename) else model_filename
 
         # 1. Preprocess
