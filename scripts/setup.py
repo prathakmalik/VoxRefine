@@ -4,7 +4,13 @@ import subprocess
 import urllib.request
 import zipfile
 import json
+import sys
 from pathlib import Path
+
+# Ensure the project root is in the python path so we can import from app.config
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT))
+
 from app.config import PROJECT_ROOT, MODELS_DIR
 
 # Configuration for binaries
@@ -45,28 +51,28 @@ def setup_engine():
     engine_dir = PROJECT_ROOT / "engine"
     engine_dir.mkdir(parents=True, exist_ok=True)
 
-    has_gpu = check_gpu()
-    print(f"GPU Detection: {'NVIDIA GPU Found' if has_gpu else 'No NVIDIA GPU Found'}")
-
-    binary_type = "cuda" if has_gpu else "cpu"
-    if has_gpu:
-        choice = input("Download CUDA-accelerated binaries? (y/n, default: y): ").lower()
-        if choice == 'n': binary_type = "cpu"
+    if (engine_dir / "whisper-cli.exe").exists() or (engine_dir / "main.exe").exists():
+        print("Binaries already present. Skipping download.")
     else:
-        print("Defaulting to CPU binaries.")
+        has_gpu = check_gpu()
+        print(f"GPU Detection: {'NVIDIA GPU Found' if has_gpu else 'No NVIDIA GPU Found'}")
 
-    bin_filename = BINARIES_MAP[binary_type]
-    bin_url = f"{WHISPER_RELEASE_BASE}/{bin_filename}"
-    bin_zip = engine_dir / bin_filename
+        binary_type = "cuda" if has_gpu else "cpu"
+        if has_gpu:
+            choice = input("Download CUDA-accelerated binaries? (y/n, default: y): ").lower()
+            if choice == 'n': binary_type = "cpu"
+        else:
+            print("Defaulting to CPU binaries.")
 
-    if not (engine_dir / "whisper-cli.exe").exists():
+        bin_filename = BINARIES_MAP[binary_type]
+        bin_url = f"{WHISPER_RELEASE_BASE}/{bin_filename}"
+        bin_zip = engine_dir / bin_filename
+
         download_file(bin_url, bin_zip)
         with zipfile.ZipFile(bin_zip, 'r') as zip_ref:
             zip_ref.extractall(engine_dir)
         os.remove(bin_zip)
         print("Binaries installed successfully.")
-    else:
-        print("Binaries already present. Skipping download.")
 
     # 2. Handle Models
     models_dir = PROJECT_ROOT / "engine" / "models"

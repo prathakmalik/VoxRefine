@@ -2,7 +2,7 @@ import subprocess
 import os
 import json
 import urllib.request
-from app.config import WHISPER_CLI_PATH, TEMP_DIR, OLLAMA_API_URL, OLLAMA_MODEL, HINGLISH_PROMPT_TEMPLATE, DEVNAGARI_PROMPT_TEMPLATE
+from app.config import WHISPER_CLI_PATH, TEMP_DIR, OLLAMA_API_URL, OLLAMA_MODEL, HINGLISH_PROMPT_TEMPLATE, DEVNAGARI_PROMPT_TEMPLATE, MODELS_DIR
 
 class TranscriptionPipeline:
     def __init__(self):
@@ -108,7 +108,9 @@ class TranscriptionPipeline:
         if model_key not in model_map:
             raise ValueError(f"Invalid model key: {model_key}")
 
-        model_path = model_map[model_key]
+        # Ensure we have the absolute path to the model file
+        model_filename = model_map[model_key]
+        model_path = str(MODELS_DIR / model_filename) if not os.path.isabs(model_filename) else model_filename
 
         # 1. Preprocess
         wav_path = self.preprocess_audio(source_path)

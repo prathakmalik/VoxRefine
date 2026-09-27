@@ -12,10 +12,7 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
 ## 🛠️ Prerequisites
 - **Python 3.10+**
 - **uv**: Fast Python package manager (`pip install uv`)
-- **Ollama**: For AI refinement. Install from [ollama.com](https://ollama.com) and pull the required model:
-  ```bash
-  ollama pull gemma4:31b-cloud
-  ```
+- **Ollama**: For AI refinement. Install from [ollama.com](https://ollama.com). This project is configured to use a cloud-hosted model (`gemma4:31b-cloud`), so no local pull is required.
 - **FFmpeg**: Must be installed and available in your system PATH.
 
 ## 📦 Installation
