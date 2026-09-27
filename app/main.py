@@ -28,8 +28,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+import uuid
+
 # Initialize pipeline
 pipeline = TranscriptionPipeline()
+
+# Global registry to track active subprocesses
+active_tasks = {}
 
 # Serve static files for the frontend
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -37,6 +42,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 class TranscribeRequest(BaseModel):
     path: str
     model: str
+    task_id: str
 
 @app.get("/models")
 async def get_models():
@@ -64,14 +70,28 @@ async def pick_file():
     return {"path": file_path}
 
 @app.post("/transcribe")
-async def transcribe(request: TranscribeRequest):
+def transcribe(request: TranscribeRequest):
     """Run the transcription and first-stage refinement (Hinglish)."""
     if not os.path.exists(request.path):
         raise HTTPException(status_code=400, detail=f"Source file not found at path: {request.path}")
 
+    task_id = request.task_id
+
     try:
-        refined_text = pipeline.run_pipeline(request.path, request.model, MODEL_MAP)
-        return {"text": refined_text}
+        # Pass task_id and the global registry to the pipeline
+        # Use a global debug flag or check the logger level
+        import logging
+        debug_mode = logging.getLogger("VoxRefine").getEffectiveLevel() == logging.DEBUG
+
+        refined_text = pipeline.run_pipeline(
+            request.path,
+            request.model,
+            MODEL_MAP,
+            task_id=task_id,
+            active_tasks=active_tasks,
+            debug=debug_mode
+        )
+        return {"text": refined_text, "task_id": task_id}
     except DependencyError as e:
         raise HTTPException(status_code=503, detail=f"System dependency missing: {str(e)}")
     except ModelNotFoundError as e:
@@ -82,9 +102,47 @@ async def transcribe(request: TranscribeRequest):
         raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+    finally:
+        # We should only remove the task from the registry if it's no longer running.
+        # In a truly async system, we'd use a background task.
+        # For now, we keep it here, but the critical part is ensuring it's not deleted too early.
+        if task_id in active_tasks:
+            del active_tasks[task_id]
+
+@app.delete("/stop")
+async def stop_task(task_id: str):
+    """Terminate a running subprocess associated with a task_id."""
+    import logging
+    logger = logging.getLogger("VoxRefine")
+
+    logger.info(f"Stop request received for task_id: {task_id}")
+
+    if task_id not in active_tasks:
+        logger.warning(f"Stop failed: Task ID {task_id} not found in active_tasks registry")
+        raise HTTPException(status_code=404, detail="Task ID not found or already completed")
+
+    try:
+        process = active_tasks[task_id]
+        pid = process.pid
+        logger.info(f"Attempting to terminate process {pid} for task {task_id}")
+
+        # On Windows, killing the parent process sometimes leaves children (like whisper-cli) running.
+        # We can use taskkill to kill the process tree.
+        import subprocess
+        kill_result = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, text=True)
+        logger.debug(f"Taskkill output: {kill_result.stdout} {kill_result.stderr}")
+
+        process.kill()
+        del active_tasks[task_id]
+        logger.info(f"Successfully terminated process {pid} and removed from registry")
+        return {"status": "Task terminated successfully"}
+    except Exception as e:
+        logger.exception(f"Error while stopping task {task_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to terminate process: {str(e)}")
+
 
 @app.post("/convert-devnagari")
-async def convert_devnagari(request: dict):
+def convert_devnagari(request: dict):
     """Convert cleaned Hinglish text to Devnagari."""
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
@@ -105,6 +163,7 @@ async def convert_devnagari(request: dict):
 class SettingsRequest(BaseModel):
     OLLAMA_API_URL: str
     OLLAMA_MODEL: str
+    TARGET_SCRIPT: str
 
 @app.get("/settings")
 async def get_settings():
@@ -112,7 +171,8 @@ async def get_settings():
     import app.config as config
     return {
         "OLLAMA_API_URL": config.OLLAMA_API_URL,
-        "OLLAMA_MODEL": config.OLLAMA_MODEL
+        "OLLAMA_MODEL": config.OLLAMA_MODEL,
+        "TARGET_SCRIPT": config.TARGET_SCRIPT
     }
 
 @app.post("/settings")
@@ -121,7 +181,8 @@ async def save_settings(request: SettingsRequest):
     try:
         settings_data = {
             "OLLAMA_API_URL": request.OLLAMA_API_URL,
-            "OLLAMA_MODEL": request.OLLAMA_MODEL
+            "OLLAMA_MODEL": request.OLLAMA_MODEL,
+            "TARGET_SCRIPT": request.TARGET_SCRIPT
         }
         with open(PROJECT_ROOT / "settings.json", 'w') as f:
             json.dump(settings_data, f, indent=4)
@@ -130,6 +191,7 @@ async def save_settings(request: SettingsRequest):
         import app.config as config
         config.OLLAMA_API_URL = request.OLLAMA_API_URL
         config.OLLAMA_MODEL = request.OLLAMA_MODEL
+        config.TARGET_SCRIPT = request.TARGET_SCRIPT
 
         return {"status": "Settings saved successfully"}
     except Exception as e:
@@ -151,4 +213,15 @@ async def clear_temp():
 
 if __name__ == "__main__":
     import uvicorn
+    import argparse
+
+    parser = argparse.ArgumentParser(description="VoxRefine API Server")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    args = parser.parse_args()
+
+    if args.debug:
+        import logging
+        logging.getLogger("VoxRefine").setLevel(logging.DEBUG)
+        print("DEBUG MODE ENABLED")
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

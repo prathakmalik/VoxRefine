@@ -40,9 +40,11 @@ MODEL_MAP = {
 # Default Ollama API configuration
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "gemma4:31b-cloud"
+DEFAULT_TARGET_SCRIPT = "Hindi (Devnagari)"
 
 # Load overrides from settings.json if it exists
 SETTINGS_FILE = PROJECT_ROOT / "settings.json"
+settings = {}
 if SETTINGS_FILE.exists():
     try:
         with open(SETTINGS_FILE, 'r') as f:
@@ -52,6 +54,8 @@ if SETTINGS_FILE.exists():
     except Exception as e:
         print(f"Warning: Failed to load settings.json: {e}")
 
+TARGET_SCRIPT = settings.get("TARGET_SCRIPT", DEFAULT_TARGET_SCRIPT)
+
 # Refinement Prompts
 HINGLISH_PROMPT_TEMPLATE = (
     "You are an expert Hinglish editor. Clean up this raw audio transcript. "
@@ -60,13 +64,4 @@ HINGLISH_PROMPT_TEMPLATE = (
     "Return the output strictly as plain paragraph text only. Do NOT use "
     "markdown headers, bold stars (**), or bullet points (*). Do not add "
     "intro/outro comments, return only the raw modified text text:\n\n{text}"
-)
-
-DEVNAGARI_PROMPT_TEMPLATE = (
-    "You are an expert linguist. Convert the provided Romanized Hinglish text into Hindi script. "
-    "Rules:\n"
-    "{conversion_rule}\n"
-    "3. Maintain the original meaning, grammar, and punctuation.\n"
-    "4. Return ONLY the converted text. No intro, no outro, no explanations.\n\n"
-    "Text:\n{text}"
 )

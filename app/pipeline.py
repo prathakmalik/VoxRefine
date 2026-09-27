@@ -2,7 +2,14 @@ import subprocess
 import os
 import json
 import urllib.request
-from app.config import WHISPER_CLI_PATH, TEMP_DIR, OLLAMA_API_URL, OLLAMA_MODEL, HINGLISH_PROMPT_TEMPLATE, DEVNAGARI_PROMPT_TEMPLATE, MODELS_DIR
+import logging
+import time
+from app.config import WHISPER_CLI_PATH, TEMP_DIR, OLLAMA_API_URL, OLLAMA_MODEL, HINGLISH_PROMPT_TEMPLATE, TARGET_SCRIPT
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("VoxRefine")
+
 
 class VoxRefineError(Exception):
     """Base exception for VoxRefine pipeline errors."""
@@ -29,10 +36,11 @@ class TranscriptionPipeline:
         if not os.path.exists(TEMP_DIR):
             os.makedirs(TEMP_DIR)
 
-    def preprocess_audio(self, source_path):
+    def preprocess_audio(self, source_path, task_id=None, active_tasks=None, debug=False):
         """
         Use ffmpeg to prepare audio: highpass/lowpass filters, 16kHz, mono, PCM 16-bit.
         """
+        if debug: logger.debug(f"Starting preprocess_audio for task {task_id}")
         target_wav = os.path.join(TEMP_DIR, "processed.wav")
         # Overwrite existing file
         cmd = [
@@ -46,9 +54,22 @@ class TranscriptionPipeline:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise ProcessingError(f"FFmpeg processing failed: {result.stderr}")
+            # Use Popen instead of run to allow termination
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            if task_id and active_tasks is not None:
+                active_tasks[task_id] = process
+
+            # Non-blocking check for termination while waiting
+            while process.poll() is None:
+                # Small sleep to prevent CPU pinning
+                time.sleep(0.1)
+
+            stdout, stderr = process.communicate()
+
+            if process.returncode != 0:
+                raise ProcessingError(f"FFmpeg processing failed: {stderr}")
+
         except FileNotFoundError:
             raise DependencyError("FFmpeg not found. Please install FFmpeg and add it to your system PATH.")
         except Exception as e:
@@ -56,10 +77,11 @@ class TranscriptionPipeline:
 
         return target_wav
 
-    def transcribe(self, wav_path, model_path):
+    def transcribe(self, wav_path, model_path, task_id=None, active_tasks=None, debug=False):
         """
         Use whisper-cli.exe to transcribe wav to text.
         """
+        if debug: logger.debug(f"Starting transcribe for task {task_id}")
         if not os.path.exists(WHISPER_CLI_PATH):
             raise DependencyError(f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py.")
 
@@ -72,9 +94,20 @@ class TranscriptionPipeline:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise ProcessingError(f"Whisper transcription failed: {result.stderr}")
+            # Use Popen instead of run to allow termination
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            if task_id and active_tasks is not None:
+                active_tasks[task_id] = process
+
+            # Non-blocking check for termination while waiting
+            while process.poll() is None:
+                import time
+                time.sleep(0.1)
+
+            stdout, stderr = process.communicate()
+            if process.returncode != 0:
+                raise ProcessingError(f"Whisper transcription failed: {stderr}")
         except Exception as e:
             raise ProcessingError(f"Unexpected error during transcription: {str(e)}")
 
@@ -97,15 +130,35 @@ class TranscriptionPipeline:
 
     def convert_to_devnagari(self, cleaned_text, full_conversion=False):
         """
-        Convert cleaned Romanized Hinglish to Devnagari.
+        Convert cleaned Romanized Hinglish to the configured native script.
         """
+        # Use the dynamic TARGET_SCRIPT from config
+        script_name = TARGET_SCRIPT if TARGET_SCRIPT else "Hindi (Devnagari)"
+
         rule = (
-            "1. Convert ALL words (including English) into Devnagari script."
+            f"1. ABSOLUTE REQUIREMENT: Convert ALL words (including English) into the {script_name} script. Do NOT use Latin or Roman characters under any circumstances."
             if full_conversion else
-            "1. Convert Hindi/Hinglish words into Devnagari script.\n2. Keep technical, brand, or proper English words in English (Latin script)."
+            f"1. ABSOLUTE REQUIREMENT: Convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
         )
 
-        prompt = DEVNAGARI_PROMPT_TEMPLATE.format(conversion_rule=rule, text=cleaned_text)
+        # Few-shot examples to anchor the model to the correct script
+        examples = (
+            f"Example 1 (Partial):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में laptop है' (If {script_name} is Hindi)\n\n"
+            f"Example 2 (Full):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में लैपटॉप है' (If {script_name} is Hindi)\n\n"
+            "Note: Always match the exact script requested in the TARGET_SCRIPT field."
+        )
+
+        # Reinforced prompt to fight LLM bias
+        prompt = (
+            f"You are a highly skilled linguist specializing in the {script_name} script. "
+            f"Your task is to translate the following Romanized Hinglish text into the {script_name} script.\n\n"
+            f"CRITICAL CONSTRAINTS:\n{rule}\n"
+            "3. Maintain the original meaning and punctuation.\n"
+            f"4. OUTPUT ONLY the converted text in {script_name} script. Do not include any English explanations, introductory text, or comments.\n"
+            f"5. If you output any text in a script other than {script_name}, the task is failed.\n\n"
+            f"REFERENCE EXAMPLES:\n{examples}\n\n"
+            f"Text to convert:\n{cleaned_text}"
+        )
         return self._call_ollama(prompt)
 
     def _call_ollama(self, prompt):
@@ -134,10 +187,11 @@ class TranscriptionPipeline:
         except Exception as e:
             raise ExternalServiceError(f"Ollama API error: {str(e)}")
 
-    def run_pipeline(self, source_path, model_key, model_map):
+    def run_pipeline(self, source_path, model_key, model_map, task_id=None, active_tasks=None, debug=False):
         """
         Coordinate the first part: Preprocess -> Transcribe -> Refine (Hinglish).
         """
+        if debug: logger.debug(f"Running pipeline for task {task_id}")
         if model_key not in model_map:
             raise ValueError(f"Invalid model key: {model_key}")
 
@@ -150,10 +204,10 @@ class TranscriptionPipeline:
         model_path = str(MODELS_DIR / model_filename) if not os.path.isabs(model_filename) else model_filename
 
         # 1. Preprocess
-        wav_path = self.preprocess_audio(source_path)
+        wav_path = self.preprocess_audio(source_path, task_id, active_tasks, debug=debug)
 
         # 2. Transcribe
-        raw_text = self.transcribe(wav_path, model_path)
+        raw_text = self.transcribe(wav_path, model_path, task_id, active_tasks, debug=debug)
 
         # 3. Refine (Always start with Hinglish clean)
         refined_text = self.refine_text(raw_text)
