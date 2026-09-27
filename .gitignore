@@ -1,16 +1,17 @@
-# Python-generated files
+# Environment
+.venv/
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+*.pyc
 
-# Virtual environments
-.venv
+# Binaries & Models (Excluded from Git)
+# These are downloaded via scripts/setup.py
+engine/**/*.exe
+engine/**/*.dll
+engine/models/**/*.bin
 
-# Binary files and executables that will be downloaded in each pull init
-*.dll
-*.exe
-*.bin
-/temp/*
+# Temporary files
+temp/
+*.wav
+*.mp3
+*.mp4
+*.txt
