@@ -5,13 +5,29 @@ import os
 import shutil
 import tkinter as tk
 from tkinter import filedialog
+from contextlib import asynccontextmanager
 from app.config import MODEL_MAP, TEMP_DIR
-from app.pipeline import TranscriptionPipeline
+from app.pipeline import TranscriptionPipeline, VoxRefineError, DependencyError, ModelNotFoundError, ExternalServiceError, ProcessingError
+from app.utils.health import get_system_health
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    # Startup: Perform system health check
+    health = get_system_health()
+    if health["status"] == "unhealthy":
+        print("--- SYSTEM HEALTH WARNING ---")
+        for missing in health["missing"]:
+            print(f"Missing dependency: {missing}")
+        print("Please run 'uv run python scripts/setup.py' to fix these issues.")
+        print("----------------------------")
+    yield
+    # Shutdown logic can go here if needed
+
+app = FastAPI(lifespan=lifespan)
 
 # Initialize pipeline
-pipeline = TranscriptionPipeline()
 
 # Serve static files for the frontend
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -24,6 +40,11 @@ class TranscribeRequest(BaseModel):
 async def get_models():
     """Return the list of available whisper models."""
     return {"models": list(MODEL_MAP.keys())}
+
+@app.get("/health")
+async def health_check():
+    """Check system dependencies and Ollama connectivity."""
+    return get_system_health()
 
 @app.get("/pick-file")
 async def pick_file():
@@ -49,8 +70,16 @@ async def transcribe(request: TranscribeRequest):
     try:
         refined_text = pipeline.run_pipeline(request.path, request.model, MODEL_MAP)
         return {"text": refined_text}
+    except DependencyError as e:
+        raise HTTPException(status_code=503, detail=f"System dependency missing: {str(e)}")
+    except ModelNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Model not found: {str(e)}")
+    except ExternalServiceError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama service unavailable: {str(e)}")
+    except ProcessingError as e:
+        raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @app.post("/convert-devnagari")
 async def convert_devnagari(request: dict):
@@ -64,8 +93,12 @@ async def convert_devnagari(request: dict):
     try:
         devnagari_text = pipeline.convert_to_devnagari(text, full_conversion)
         return {"text": devnagari_text}
+    except ExternalServiceError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama service unavailable: {str(e)}")
+    except ProcessingError as e:
+        raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @app.delete("/temp")
 async def clear_temp():

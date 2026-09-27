@@ -4,6 +4,26 @@ import json
 import urllib.request
 from app.config import WHISPER_CLI_PATH, TEMP_DIR, OLLAMA_API_URL, OLLAMA_MODEL, HINGLISH_PROMPT_TEMPLATE, DEVNAGARI_PROMPT_TEMPLATE, MODELS_DIR
 
+class VoxRefineError(Exception):
+    """Base exception for VoxRefine pipeline errors."""
+    pass
+
+class DependencyError(VoxRefineError):
+    """Raised when a system dependency (ffmpeg, binaries) is missing."""
+    pass
+
+class ModelNotFoundError(VoxRefineError):
+    """Raised when a whisper model file is not found."""
+    pass
+
+class ExternalServiceError(VoxRefineError):
+    """Raised when Ollama API is unavailable or returns an error."""
+    pass
+
+class ProcessingError(VoxRefineError):
+    """Raised when transcription or refinement fails."""
+    pass
+
 class TranscriptionPipeline:
     def __init__(self):
         if not os.path.exists(TEMP_DIR):
@@ -25,9 +45,14 @@ class TranscriptionPipeline:
             target_wav
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise Exception(f"FFmpeg error: {result.stderr}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise ProcessingError(f"FFmpeg processing failed: {result.stderr}")
+        except FileNotFoundError:
+            raise DependencyError("FFmpeg not found. Please install FFmpeg and add it to your system PATH.")
+        except Exception as e:
+            raise ProcessingError(f"Unexpected FFmpeg error: {str(e)}")
 
         return target_wav
 
@@ -35,6 +60,9 @@ class TranscriptionPipeline:
         """
         Use whisper-cli.exe to transcribe wav to text.
         """
+        if not os.path.exists(WHISPER_CLI_PATH):
+            raise DependencyError(f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py.")
+
         # whisper-cli.exe -m [model] -f [wav] -otxt
         cmd = [
             WHISPER_CLI_PATH,
@@ -43,15 +71,18 @@ class TranscriptionPipeline:
             "-otxt"
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise Exception(f"Whisper error: {result.stderr}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise ProcessingError(f"Whisper transcription failed: {result.stderr}")
+        except Exception as e:
+            raise ProcessingError(f"Unexpected error during transcription: {str(e)}")
 
         # Whisper-cli typically creates a file with the same base name as the input + .txt
         # If input is processed.wav, output is usually processed.wav.txt
         txt_path = wav_path + ".txt"
         if not os.path.exists(txt_path):
-            raise Exception(f"Transcription file not found: {txt_path}")
+            raise ProcessingError(f"Transcription output file not found: {txt_path}")
 
         with open(txt_path, 'r', encoding='utf-8') as f:
             raw_text = f.read()
@@ -95,11 +126,13 @@ class TranscriptionPipeline:
         )
 
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
                 return res_data.get('response', '')
+        except urllib.error.URLError as e:
+            raise ExternalServiceError(f"Unable to connect to Ollama server: {e.reason}")
         except Exception as e:
-            raise Exception(f"Ollama API error: {e}")
+            raise ExternalServiceError(f"Ollama API error: {str(e)}")
 
     def run_pipeline(self, source_path, model_key, model_map):
         """
