@@ -6,7 +6,8 @@ import shutil
 import tkinter as tk
 from tkinter import filedialog
 from contextlib import asynccontextmanager
-from app.config import MODEL_MAP, TEMP_DIR
+import json
+from app.config import MODEL_MAP, TEMP_DIR, PROJECT_ROOT, SETTINGS_FILE
 from app.pipeline import TranscriptionPipeline, VoxRefineError, DependencyError, ModelNotFoundError, ExternalServiceError, ProcessingError
 from app.utils.health import get_system_health
 
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # Initialize pipeline
+pipeline = TranscriptionPipeline()
 
 # Serve static files for the frontend
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -99,6 +101,39 @@ async def convert_devnagari(request: dict):
         raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+class SettingsRequest(BaseModel):
+    OLLAMA_API_URL: str
+    OLLAMA_MODEL: str
+
+@app.get("/settings")
+async def get_settings():
+    """Return current API and Model settings."""
+    import app.config as config
+    return {
+        "OLLAMA_API_URL": config.OLLAMA_API_URL,
+        "OLLAMA_MODEL": config.OLLAMA_MODEL
+    }
+
+@app.post("/settings")
+async def save_settings(request: SettingsRequest):
+    """Save settings to settings.json and update config."""
+    try:
+        settings_data = {
+            "OLLAMA_API_URL": request.OLLAMA_API_URL,
+            "OLLAMA_MODEL": request.OLLAMA_MODEL
+        }
+        with open(PROJECT_ROOT / "settings.json", 'w') as f:
+            json.dump(settings_data, f, indent=4)
+
+        # Update the active config in memory
+        import app.config as config
+        config.OLLAMA_API_URL = request.OLLAMA_API_URL
+        config.OLLAMA_MODEL = request.OLLAMA_MODEL
+
+        return {"status": "Settings saved successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
 
 @app.delete("/temp")
 async def clear_temp():

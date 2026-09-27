@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 
 # Project root is the directory containing the 'app' folder
@@ -36,9 +37,20 @@ MODEL_MAP = {
     }
 }
 
-# Ollama API configuration
+# Default Ollama API configuration
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "gemma4:31b-cloud"
+
+# Load overrides from settings.json if it exists
+SETTINGS_FILE = PROJECT_ROOT / "settings.json"
+if SETTINGS_FILE.exists():
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            settings = json.load(f)
+            OLLAMA_API_URL = settings.get("OLLAMA_API_URL", OLLAMA_API_URL)
+            OLLAMA_MODEL = settings.get("OLLAMA_MODEL", OLLAMA_MODEL)
+    except Exception as e:
+        print(f"Warning: Failed to load settings.json: {e}")
 
 # Refinement Prompts
 HINGLISH_PROMPT_TEMPLATE = (
