@@ -494,9 +494,28 @@
             resultText.value = '';
             devnagariText.value = '';
             document.getElementById('devnagari-section').style.display = 'none';
-            setStatus('Processing... (FFmpeg ➔ Whisper ➔ Ollama)', 'loading');
+            setStatus('Starting...', 'loading');
 
             currentAbortController = new AbortController();
+
+            // Start polling for status updates
+            const statusInterval = setInterval(async () => {
+                try {
+                    const statusRes = await fetch(`/task-status?task_id=${currentTaskId}`);
+                    const statusData = await statusRes.json();
+                    if (statusData.status === 'processing') {
+                        const stage = statusData.stage || 'unknown';
+                        const stageNames = {
+                            'ffmpeg': 'FFmpeg (Preprocessing)',
+                            'whisper': 'Whisper (Transcribing)',
+                            'ollama': 'Ollama (Refining)'
+                        };
+                        setStatus(`Processing... (${stageNames[stage] || stage})`, 'loading');
+                    }
+                } catch (err) {
+                    console.error('Status polling error:', err);
+                }
+            }, 1000);
 
             try {
                 const response = await fetch('/transcribe', {
@@ -518,7 +537,9 @@
                 const data = await response.json();
                 resultText.value = data.text;
                 document.getElementById('devnagari-section').style.display = 'block';
-                setStatus('Completed successfully!', 'success');
+                
+                const duration = data.duration ? ` in ${data.duration.toFixed(2)}s` : '';
+                setStatus(`Completed successfully!${duration}`, 'success');
             } catch (err) {
                 if (err.name === 'AbortError') {
                     setStatus('Processing stopped by user', 'success');
@@ -526,6 +547,7 @@
                     setStatus(err.message, 'error');
                 }
             } finally {
+                clearInterval(statusInterval);
                 processBtn.disabled = false;
                 processBtn.innerHTML = originalBtnText;
                 stopBtn.style.display = 'none';

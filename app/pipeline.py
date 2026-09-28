@@ -93,14 +93,20 @@ class TranscriptionPipeline:
             )
 
             if task_id and active_tasks is not None:
-                active_tasks[task_id] = process
+                if isinstance(active_tasks[task_id], dict):
+                    active_tasks[task_id]["process"] = process
+                else:
+                    active_tasks[task_id] = process
 
-            # Non-blocking check for termination while waiting
-            while process.poll() is None:
-                # Small sleep to prevent CPU pinning
-                time.sleep(0.1)
-
-            stdout, stderr = process.communicate()
+            # Call communicate() directly to avoid pipe buffer deadlocks.
+            # This blocks the thread until the process completes, but FastAPI
+            # runs this in a separate thread, so it's safe.
+            try:
+                stdout, stderr = process.communicate(timeout=3600)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise ProcessingError("FFmpeg processing timed out after 1 hour")
 
             if process.returncode != 0:
                 raise ProcessingError(f"FFmpeg processing failed: {stderr}")
@@ -126,7 +132,7 @@ class TranscriptionPipeline:
             raise DependencyError(
                 f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py."
             )
-
+        
         # whisper-cli.exe -m [model] -f [wav] -otxt
         cmd = [WHISPER_CLI_PATH, "-m", model_path, "-f", wav_path, "-otxt"]
 
@@ -137,15 +143,19 @@ class TranscriptionPipeline:
             )
 
             if task_id and active_tasks is not None:
-                active_tasks[task_id] = process
+                if isinstance(active_tasks[task_id], dict):
+                    active_tasks[task_id]["process"] = process
+                else:
+                    active_tasks[task_id] = process
 
-            # Non-blocking check for termination while waiting
-            while process.poll() is None:
-                import time
+            # Call communicate() directly to avoid pipe buffer deadlocks.
+            try:
+                stdout, stderr = process.communicate(timeout=3600)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise ProcessingError("Whisper transcription timed out after 1 hour")
 
-                time.sleep(0.1)
-
-            stdout, stderr = process.communicate()
             if process.returncode != 0:
                 raise ProcessingError(f"Whisper transcription failed: {stderr}")
         except Exception as e:
@@ -256,6 +266,9 @@ class TranscriptionPipeline:
         """
         Coordinate the first part: Preprocess -> Transcribe -> Refine (Hinglish).
         """
+        import time
+        start_time = time.time()
+
         if debug:
             logger.debug(f"Running pipeline for task {task_id}")
         if model_key not in model_map:
@@ -283,16 +296,26 @@ class TranscriptionPipeline:
             )
 
         # 1. Preprocess
+        if active_tasks is not None:
+            active_tasks[task_id] = {"status": "ffmpeg", "start_time": start_time}
+        
         wav_path = self.preprocess_audio(
             source_path, task_id, active_tasks, debug=debug
         )
 
         # 2. Transcribe
+        if active_tasks is not None:
+            active_tasks[task_id]["status"] = "whisper"
+        
         raw_text = self.transcribe(
             wav_path, model_path, task_id, active_tasks, debug=debug
         )
 
-        # 3. Refine (Always start with Hinglish clean)
+        # 3. Refine
+        if active_tasks is not None:
+            active_tasks[task_id]["status"] = "ollama"
+        
         refined_text = self.refine_text(raw_text)
 
-        return refined_text
+        total_duration = time.time() - start_time
+        return refined_text, total_duration

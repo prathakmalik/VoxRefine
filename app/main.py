@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import tkinter as tk
@@ -19,6 +20,12 @@ from app.pipeline import (
 )
 from app.utils.health import get_system_health
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("VoxRefine")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,11 +33,13 @@ async def lifespan(app: FastAPI):
     # Startup: Perform system health check
     health = get_system_health()
     if health["status"] == "unhealthy":
-        print("--- SYSTEM HEALTH WARNING ---")
+        logger.warning("--- SYSTEM HEALTH WARNING ---")
         for missing in health["missing"]:
-            print(f"Missing dependency: {missing}")
-        print("Please run 'uv run python scripts/setup.py' to fix these issues.")
-        print("----------------------------")
+            logger.warning(f"Missing dependency: {missing}")
+        logger.warning(
+            "Please run 'uv run python scripts/setup.py' to fix these issues."
+        )
+        logger.warning("----------------------------")
     yield
     # Shutdown logic can go here if needed
 
@@ -83,6 +92,19 @@ async def pick_file():
     return {"path": file_path}
 
 
+@app.get("/task-status")
+async def get_task_status(task_id: str):
+    """Return the current status of a running transcription task."""
+    if task_id not in active_tasks:
+        return {"status": "completed", "stage": None}
+    
+    task_data = active_tasks[task_id]
+    if isinstance(task_data, dict):
+        return {"status": "processing", "stage": task_data.get("status")}
+    
+    # Fallback for old registry format
+    return {"status": "processing", "stage": "unknown"}
+
 @app.post("/transcribe")
 def transcribe(request: TranscribeRequest):
     """Run the transcription and first-stage refinement (Hinglish)."""
@@ -100,7 +122,7 @@ def transcribe(request: TranscribeRequest):
 
         debug_mode = logging.getLogger("VoxRefine").getEffectiveLevel() == logging.DEBUG
 
-        refined_text = pipeline.run_pipeline(
+        refined_text, duration = pipeline.run_pipeline(
             request.path,
             request.model,
             MODEL_MAP,
@@ -108,7 +130,7 @@ def transcribe(request: TranscribeRequest):
             active_tasks=active_tasks,
             debug=debug_mode,
         )
-        return {"text": refined_text, "task_id": task_id}
+        return {"text": refined_text, "task_id": task_id, "duration": duration}
     except DependencyError as e:
         raise HTTPException(
             status_code=503, detail=f"System dependency missing: {str(e)}"
