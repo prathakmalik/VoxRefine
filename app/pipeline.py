@@ -64,7 +64,11 @@ class TranscriptionPipeline:
         """
         if debug:
             logger.debug(f"Starting preprocess_audio for task {task_id}")
-        target_wav = os.path.join(TEMP_DIR, "processed.wav")
+        
+        # Use task_id to create a unique filename and prevent collisions
+        filename = f"processed_{task_id}.wav" if task_id else "processed.wav"
+        target_wav = os.path.join(TEMP_DIR, filename)
+        
         # Overwrite existing file
         cmd = [
             "ffmpeg",
@@ -221,6 +225,25 @@ class TranscriptionPipeline:
         except Exception as e:
             raise ExternalServiceError(f"Ollama API error: {str(e)}")
 
+    def cleanup_task(self, task_id):
+        """
+        Remove all temporary files associated with a specific task_id.
+        """
+        if not task_id:
+            return
+
+        try:
+            for filename in os.listdir(TEMP_DIR):
+                if filename.startswith(f"processed_{task_id}"):
+                    file_path = os.path.join(TEMP_DIR, filename)
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+            logger.debug(f"Cleaned up temporary files for task {task_id}")
+        except Exception as e:
+            logger.error(f"Error cleaning up task {task_id}: {e}")
+
     def run_pipeline(
         self,
         source_path,
@@ -252,6 +275,12 @@ class TranscriptionPipeline:
             if not os.path.isabs(model_filename)
             else model_filename
         )
+
+        if not os.path.exists(model_path):
+            raise ModelNotFoundError(
+                f"Model file {model_filename} not found at {model_path}. "
+                f"Please run 'uv run python scripts/setup.py' to download the required models."
+            )
 
         # 1. Preprocess
         wav_path = self.preprocess_audio(

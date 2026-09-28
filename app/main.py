@@ -124,11 +124,10 @@ def transcribe(request: TranscribeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
     finally:
-        # We should only remove the task from the registry if it's no longer running.
-        # In a truly async system, we'd use a background task.
-        # For now, we keep it here, but the critical part is ensuring it's not deleted too early.
+        # Cleanup: Remove the task from the registry and delete temporary files
         if task_id in active_tasks:
             del active_tasks[task_id]
+        pipeline.cleanup_task(task_id)
 
 
 @app.delete("/stop")
