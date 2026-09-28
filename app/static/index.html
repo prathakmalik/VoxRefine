@@ -627,7 +627,7 @@
 
             setStatus(`Converting to ${scriptName}...`, 'loading');
             try {
-                const response = await fetch('/convert-devnagari', {
+                const response = await fetch('/convert-native-script', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

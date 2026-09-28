@@ -196,9 +196,9 @@ async def stop_task(task_id: str):
         )
 
 
-@app.post("/convert-devnagari")
-async def convert_devnagari(request: dict):
-    """Convert cleaned Hinglish text to Devnagari."""
+@app.post("/convert-native-script")
+async def convert_native_script(request: dict):
+    """Translate and convert cleaned Hinglish text to the configured native script."""
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
 
@@ -206,8 +206,8 @@ async def convert_devnagari(request: dict):
         raise HTTPException(status_code=400, detail="No text provided for conversion")
 
     try:
-        devnagari_text = await pipeline.convert_to_devnagari(text, full_conversion)
-        return {"text": devnagari_text}
+        native_text = await pipeline.convert_to_native_script(text, full_conversion)
+        return {"text": native_text}
     except ExternalServiceError as e:
         raise HTTPException(
             status_code=503, detail=f"Ollama service unavailable: {str(e)}"

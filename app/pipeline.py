@@ -167,26 +167,31 @@ class TranscriptionPipeline:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._call_ollama, HINGLISH_PROMPT_TEMPLATE.format(text=raw_text))
 
-    async def convert_to_devnagari(self, cleaned_text, full_conversion=False):
+    async def convert_to_native_script(self, cleaned_text, full_conversion=False):
         """
-        Convert cleaned Romanized Hinglish to the configured native script.
+        Translate and convert cleaned Romanized Hinglish text to the configured native script.
         """
         script_name = TARGET_SCRIPT if TARGET_SCRIPT else "Hindi (Devnagari)"
 
+        # Determine if we are translating or just converting scripts (Hindi is usually conversion)
+        is_translation = "Hindi" not in script_name
+
         rule = (
-            f"1. ABSOLUTE REQUIREMENT: Convert ALL words (including English) into the {script_name} script. Do NOT use Latin or Roman characters under any circumstances."
+            f"1. ABSOLUTE REQUIREMENT: Translate and convert ALL words (including English) into the {script_name} script. Do NOT use Latin or Roman characters under any circumstances."
             if full_conversion
-            else f"1. ABSOLUTE REQUIREMENT: Convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
+            else f"1. ABSOLUTE REQUIREMENT: Translate and convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
         )
 
+        # Few-shot examples to anchor the model to the correct script and language
         examples = (
             f"Example 1 (Partial):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में laptop है' (If {script_name} is Hindi)\n\n"
             f"Example 2 (Full):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में लैपटॉप है' (If {script_name} is Hindi)\n\n"
-            "Note: Always match the exact script requested in the TARGET_SCRIPT field."
+            f"Note: The input is Romanized Hinglish. If the target script is not Hindi, you MUST translate the meaning of the Hinglish words into the {script_name} language before writing them in the {script_name} script."
         )
 
+        # Reinforced prompt to fight LLM bias
         prompt = (
-            f"You are a highly skilled linguist specializing in the {script_name} script. "
+            f"You are a highly skilled linguist specializing in the {script_name} language and script. "
             f"Your task is to translate the following Romanized Hinglish text into the {script_name} script.\n\n"
             f"CRITICAL CONSTRAINTS:\n{rule}\n"
             "3. Maintain the original meaning and punctuation.\n"
