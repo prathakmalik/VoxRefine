@@ -1,4 +1,3 @@
-import os
 import json
 from pathlib import Path
 
@@ -25,7 +24,7 @@ MODELS_DIR = PROJECT_ROOT / "engine" / "models"
 MODEL_MAP = {
     "Hindi-Hinglish-q5": {
         "file": "ggml-hindi2hinglish-apex-q5_1.bin",
-        "url": "https://huggingface.co/your-model-repo/ggml-hindi2hinglish-apex-q5_1.bin",
+        "url": "https://huggingface.co/voquill/whisper-hindi2hinglish-apex-ggml/resolve/main/ggml-hindi2hinglish-apex-q5_1.bin?download=true",
     },
     "Medium-q5": {
         "file": "ggml-medium-q5_0.bin",
@@ -34,7 +33,7 @@ MODEL_MAP = {
     "Marquestra-Hinglish-q5": {
         "file": "ggml-apex-hinglish-q5_0.bin",
         "url": "https://huggingface.co/Marquestra/Whisper-Hindi2Hinglish-Apex-GGML/resolve/main/ggml-apex-hinglish-q5_0.bin",
-    }
+    },
 }
 
 # Default Ollama API configuration
@@ -47,11 +46,11 @@ SETTINGS_FILE = PROJECT_ROOT / "settings.json"
 settings = {}
 if SETTINGS_FILE.exists():
     try:
-        with open(SETTINGS_FILE, 'r') as f:
+        with open(SETTINGS_FILE, "r") as f:
             settings = json.load(f)
             OLLAMA_API_URL = settings.get("OLLAMA_API_URL", OLLAMA_API_URL)
             OLLAMA_MODEL = settings.get("OLLAMA_MODEL", OLLAMA_MODEL)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Warning: Failed to load settings.json: {e}")
 
 TARGET_SCRIPT = settings.get("TARGET_SCRIPT", DEFAULT_TARGET_SCRIPT)

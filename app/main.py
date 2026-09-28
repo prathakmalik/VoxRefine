@@ -1,14 +1,22 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+import json
 import os
 import shutil
 import tkinter as tk
-from tkinter import filedialog
 from contextlib import asynccontextmanager
-import json
-from app.config import MODEL_MAP, TEMP_DIR, PROJECT_ROOT, SETTINGS_FILE
-from app.pipeline import TranscriptionPipeline, VoxRefineError, DependencyError, ModelNotFoundError, ExternalServiceError, ProcessingError
+from tkinter import filedialog
+
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from app.config import MODEL_MAP, PROJECT_ROOT, TEMP_DIR
+from app.pipeline import (
+    DependencyError,
+    ExternalServiceError,
+    ModelNotFoundError,
+    ProcessingError,
+    TranscriptionPipeline,
+)
 from app.utils.health import get_system_health
 
 
@@ -26,6 +34,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown logic can go here if needed
 
+
 app = FastAPI(lifespan=lifespan)
 
 import uuid
@@ -39,27 +48,31 @@ active_tasks = {}
 # Serve static files for the frontend
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+
 class TranscribeRequest(BaseModel):
     path: str
     model: str
     task_id: str
+
 
 @app.get("/models")
 async def get_models():
     """Return the list of available whisper models."""
     return {"models": list(MODEL_MAP.keys())}
 
+
 @app.get("/health")
 async def health_check():
     """Check system dependencies and Ollama connectivity."""
     return get_system_health()
 
+
 @app.get("/pick-file")
 async def pick_file():
     """Trigger a native Windows file dialog to select a file path."""
     root = tk.Tk()
-    root.withdraw() # Hide the main tkinter window
-    root.attributes("-topmost", True) # Bring dialog to front
+    root.withdraw()  # Hide the main tkinter window
+    root.attributes("-topmost", True)  # Bring dialog to front
 
     file_path = filedialog.askopenfilename(title="Select Source Video/Audio File")
     root.destroy()
@@ -69,11 +82,14 @@ async def pick_file():
 
     return {"path": file_path}
 
+
 @app.post("/transcribe")
 def transcribe(request: TranscribeRequest):
     """Run the transcription and first-stage refinement (Hinglish)."""
     if not os.path.exists(request.path):
-        raise HTTPException(status_code=400, detail=f"Source file not found at path: {request.path}")
+        raise HTTPException(
+            status_code=400, detail=f"Source file not found at path: {request.path}"
+        )
 
     task_id = request.task_id
 
@@ -81,6 +97,7 @@ def transcribe(request: TranscribeRequest):
         # Pass task_id and the global registry to the pipeline
         # Use a global debug flag or check the logger level
         import logging
+
         debug_mode = logging.getLogger("VoxRefine").getEffectiveLevel() == logging.DEBUG
 
         refined_text = pipeline.run_pipeline(
@@ -89,15 +106,19 @@ def transcribe(request: TranscribeRequest):
             MODEL_MAP,
             task_id=task_id,
             active_tasks=active_tasks,
-            debug=debug_mode
+            debug=debug_mode,
         )
         return {"text": refined_text, "task_id": task_id}
     except DependencyError as e:
-        raise HTTPException(status_code=503, detail=f"System dependency missing: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail=f"System dependency missing: {str(e)}"
+        )
     except ModelNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Model not found: {str(e)}")
     except ExternalServiceError as e:
-        raise HTTPException(status_code=503, detail=f"Ollama service unavailable: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail=f"Ollama service unavailable: {str(e)}"
+        )
     except ProcessingError as e:
         raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
     except Exception as e:
@@ -109,17 +130,23 @@ def transcribe(request: TranscribeRequest):
         if task_id in active_tasks:
             del active_tasks[task_id]
 
+
 @app.delete("/stop")
 async def stop_task(task_id: str):
     """Terminate a running subprocess associated with a task_id."""
     import logging
+
     logger = logging.getLogger("VoxRefine")
 
     logger.info(f"Stop request received for task_id: {task_id}")
 
     if task_id not in active_tasks:
-        logger.warning(f"Stop failed: Task ID {task_id} not found in active_tasks registry")
-        raise HTTPException(status_code=404, detail="Task ID not found or already completed")
+        logger.warning(
+            f"Stop failed: Task ID {task_id} not found in active_tasks registry"
+        )
+        raise HTTPException(
+            status_code=404, detail="Task ID not found or already completed"
+        )
 
     try:
         process = active_tasks[task_id]
@@ -129,7 +156,10 @@ async def stop_task(task_id: str):
         # On Windows, killing the parent process sometimes leaves children (like whisper-cli) running.
         # We can use taskkill to kill the process tree.
         import subprocess
-        kill_result = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, text=True)
+
+        kill_result = subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, text=True
+        )
         logger.debug(f"Taskkill output: {kill_result.stdout} {kill_result.stderr}")
 
         process.kill()
@@ -138,7 +168,9 @@ async def stop_task(task_id: str):
         return {"status": "Task terminated successfully"}
     except Exception as e:
         logger.exception(f"Error while stopping task {task_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to terminate process: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to terminate process: {str(e)}"
+        )
 
 
 @app.post("/convert-devnagari")
@@ -154,26 +186,32 @@ def convert_devnagari(request: dict):
         devnagari_text = pipeline.convert_to_devnagari(text, full_conversion)
         return {"text": devnagari_text}
     except ExternalServiceError as e:
-        raise HTTPException(status_code=503, detail=f"Ollama service unavailable: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail=f"Ollama service unavailable: {str(e)}"
+        )
     except ProcessingError as e:
         raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
 
 class SettingsRequest(BaseModel):
     OLLAMA_API_URL: str
     OLLAMA_MODEL: str
     TARGET_SCRIPT: str
 
+
 @app.get("/settings")
 async def get_settings():
     """Return current API and Model settings."""
     import app.config as config
+
     return {
         "OLLAMA_API_URL": config.OLLAMA_API_URL,
         "OLLAMA_MODEL": config.OLLAMA_MODEL,
-        "TARGET_SCRIPT": config.TARGET_SCRIPT
+        "TARGET_SCRIPT": config.TARGET_SCRIPT,
     }
+
 
 @app.post("/settings")
 async def save_settings(request: SettingsRequest):
@@ -182,20 +220,24 @@ async def save_settings(request: SettingsRequest):
         settings_data = {
             "OLLAMA_API_URL": request.OLLAMA_API_URL,
             "OLLAMA_MODEL": request.OLLAMA_MODEL,
-            "TARGET_SCRIPT": request.TARGET_SCRIPT
+            "TARGET_SCRIPT": request.TARGET_SCRIPT,
         }
-        with open(PROJECT_ROOT / "settings.json", 'w') as f:
+        with open(PROJECT_ROOT / "settings.json", "w") as f:
             json.dump(settings_data, f, indent=4)
 
         # Update the active config in memory
         import app.config as config
+
         config.OLLAMA_API_URL = request.OLLAMA_API_URL
         config.OLLAMA_MODEL = request.OLLAMA_MODEL
         config.TARGET_SCRIPT = request.TARGET_SCRIPT
 
         return {"status": "Settings saved successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to save settings: {str(e)}"
+        )
+
 
 @app.delete("/temp")
 async def clear_temp():
@@ -211,9 +253,11 @@ async def clear_temp():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear temp: {e}")
 
+
 if __name__ == "__main__":
-    import uvicorn
     import argparse
+
+    import uvicorn
 
     parser = argparse.ArgumentParser(description="VoxRefine API Server")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
@@ -221,6 +265,7 @@ if __name__ == "__main__":
 
     if args.debug:
         import logging
+
         logging.getLogger("VoxRefine").setLevel(logging.DEBUG)
         print("DEBUG MODE ENABLED")
 

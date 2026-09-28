@@ -5,9 +5,10 @@ __pycache__/
 
 # Binaries & Models (Excluded from Git)
 # These are downloaded via scripts/setup.py
-engine/**/*.exe
-engine/**/*.dll
-engine/models/**/*.bin
+# Ignore all files inside the engine folder
+engine/**/*
+# But do not ignore the directory structures themselves
+!engine/**/
 
 # Temporary files
 temp/

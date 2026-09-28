@@ -1,61 +1,92 @@
-import subprocess
-import os
 import json
-import urllib.request
 import logging
+import os
+import subprocess
 import time
-from app.config import WHISPER_CLI_PATH, TEMP_DIR, OLLAMA_API_URL, OLLAMA_MODEL, HINGLISH_PROMPT_TEMPLATE, TARGET_SCRIPT
+import urllib.request
+
+from app.config import (
+    HINGLISH_PROMPT_TEMPLATE,
+    OLLAMA_API_URL,
+    OLLAMA_MODEL,
+    TARGET_SCRIPT,
+    TEMP_DIR,
+    WHISPER_CLI_PATH,
+)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("VoxRefine")
 
 
 class VoxRefineError(Exception):
     """Base exception for VoxRefine pipeline errors."""
+
     pass
+
 
 class DependencyError(VoxRefineError):
     """Raised when a system dependency (ffmpeg, binaries) is missing."""
+
     pass
+
 
 class ModelNotFoundError(VoxRefineError):
     """Raised when a whisper model file is not found."""
+
     pass
+
 
 class ExternalServiceError(VoxRefineError):
     """Raised when Ollama API is unavailable or returns an error."""
+
     pass
+
 
 class ProcessingError(VoxRefineError):
     """Raised when transcription or refinement fails."""
+
     pass
+
 
 class TranscriptionPipeline:
     def __init__(self):
         if not os.path.exists(TEMP_DIR):
             os.makedirs(TEMP_DIR)
 
-    def preprocess_audio(self, source_path, task_id=None, active_tasks=None, debug=False):
+    def preprocess_audio(
+        self, source_path, task_id=None, active_tasks=None, debug=False
+    ):
         """
         Use ffmpeg to prepare audio: highpass/lowpass filters, 16kHz, mono, PCM 16-bit.
         """
-        if debug: logger.debug(f"Starting preprocess_audio for task {task_id}")
+        if debug:
+            logger.debug(f"Starting preprocess_audio for task {task_id}")
         target_wav = os.path.join(TEMP_DIR, "processed.wav")
         # Overwrite existing file
         cmd = [
-            "ffmpeg", "-y",
-            "-i", source_path,
-            "-af", "highpass=f=200, lowpass=f=3000",
-            "-ar", "16000",
-            "-ac", "1",
-            "-c:a", "pcm_s16le",
-            target_wav
+            "ffmpeg",
+            "-y",
+            "-i",
+            source_path,
+            "-af",
+            "highpass=f=200, lowpass=f=3000",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-c:a",
+            "pcm_s16le",
+            target_wav,
         ]
 
         try:
             # Use Popen instead of run to allow termination
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
 
             if task_id and active_tasks is not None:
                 active_tasks[task_id] = process
@@ -71,31 +102,35 @@ class TranscriptionPipeline:
                 raise ProcessingError(f"FFmpeg processing failed: {stderr}")
 
         except FileNotFoundError:
-            raise DependencyError("FFmpeg not found. Please install FFmpeg and add it to your system PATH.")
+            raise DependencyError(
+                "FFmpeg not found. Please install FFmpeg and add it to your system PATH."
+            )
         except Exception as e:
             raise ProcessingError(f"Unexpected FFmpeg error: {str(e)}")
 
         return target_wav
 
-    def transcribe(self, wav_path, model_path, task_id=None, active_tasks=None, debug=False):
+    def transcribe(
+        self, wav_path, model_path, task_id=None, active_tasks=None, debug=False
+    ):
         """
         Use whisper-cli.exe to transcribe wav to text.
         """
-        if debug: logger.debug(f"Starting transcribe for task {task_id}")
+        if debug:
+            logger.debug(f"Starting transcribe for task {task_id}")
         if not os.path.exists(WHISPER_CLI_PATH):
-            raise DependencyError(f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py.")
+            raise DependencyError(
+                f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py."
+            )
 
         # whisper-cli.exe -m [model] -f [wav] -otxt
-        cmd = [
-            WHISPER_CLI_PATH,
-            "-m", model_path,
-            "-f", wav_path,
-            "-otxt"
-        ]
+        cmd = [WHISPER_CLI_PATH, "-m", model_path, "-f", wav_path, "-otxt"]
 
         try:
             # Use Popen instead of run to allow termination
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
 
             if task_id and active_tasks is not None:
                 active_tasks[task_id] = process
@@ -103,6 +138,7 @@ class TranscriptionPipeline:
             # Non-blocking check for termination while waiting
             while process.poll() is None:
                 import time
+
                 time.sleep(0.1)
 
             stdout, stderr = process.communicate()
@@ -117,7 +153,7 @@ class TranscriptionPipeline:
         if not os.path.exists(txt_path):
             raise ProcessingError(f"Transcription output file not found: {txt_path}")
 
-        with open(txt_path, 'r', encoding='utf-8') as f:
+        with open(txt_path, "r", encoding="utf-8") as f:
             raw_text = f.read()
 
         return raw_text
@@ -137,8 +173,8 @@ class TranscriptionPipeline:
 
         rule = (
             f"1. ABSOLUTE REQUIREMENT: Convert ALL words (including English) into the {script_name} script. Do NOT use Latin or Roman characters under any circumstances."
-            if full_conversion else
-            f"1. ABSOLUTE REQUIREMENT: Convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
+            if full_conversion
+            else f"1. ABSOLUTE REQUIREMENT: Convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
         )
 
         # Few-shot examples to anchor the model to the correct script
@@ -165,49 +201,67 @@ class TranscriptionPipeline:
         """
         Internal helper to handle the actual API request to Ollama.
         """
-        body = {
-            'model': OLLAMA_MODEL,
-            'prompt': prompt,
-            'stream': False
-        }
+        body = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
 
         req = urllib.request.Request(
             OLLAMA_API_URL,
-            data=json.dumps(body).encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
-            method='POST'
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
 
         try:
             with urllib.request.urlopen(req, timeout=15) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                return res_data.get('response', '')
+                res_data = json.loads(response.read().decode("utf-8"))
+                return res_data.get("response", "")
         except urllib.error.URLError as e:
-            raise ExternalServiceError(f"Unable to connect to Ollama server: {e.reason}")
+            raise ExternalServiceError(
+                f"Unable to connect to Ollama server: {e.reason}"
+            )
         except Exception as e:
             raise ExternalServiceError(f"Ollama API error: {str(e)}")
 
-    def run_pipeline(self, source_path, model_key, model_map, task_id=None, active_tasks=None, debug=False):
+    def run_pipeline(
+        self,
+        source_path,
+        model_key,
+        model_map,
+        task_id=None,
+        active_tasks=None,
+        debug=False,
+    ):
         """
         Coordinate the first part: Preprocess -> Transcribe -> Refine (Hinglish).
         """
-        if debug: logger.debug(f"Running pipeline for task {task_id}")
+        if debug:
+            logger.debug(f"Running pipeline for task {task_id}")
         if model_key not in model_map:
             raise ValueError(f"Invalid model key: {model_key}")
 
         # Handle the new MODEL_MAP structure where value is a dict with 'file' and 'url'
         model_info = model_map[model_key]
-        model_filename = model_info['file'] if isinstance(model_info, dict) else model_info
+        model_filename = (
+            model_info["file"] if isinstance(model_info, dict) else model_info
+        )
 
         # Ensure we have the absolute path to the model file
         from app.config import MODELS_DIR
-        model_path = str(MODELS_DIR / model_filename) if not os.path.isabs(model_filename) else model_filename
+
+        model_path = (
+            str(MODELS_DIR / model_filename)
+            if not os.path.isabs(model_filename)
+            else model_filename
+        )
 
         # 1. Preprocess
-        wav_path = self.preprocess_audio(source_path, task_id, active_tasks, debug=debug)
+        wav_path = self.preprocess_audio(
+            source_path, task_id, active_tasks, debug=debug
+        )
 
         # 2. Transcribe
-        raw_text = self.transcribe(wav_path, model_path, task_id, active_tasks, debug=debug)
+        raw_text = self.transcribe(
+            wav_path, model_path, task_id, active_tasks, debug=debug
+        )
 
         # 3. Refine (Always start with Hinglish clean)
         refined_text = self.refine_text(raw_text)
