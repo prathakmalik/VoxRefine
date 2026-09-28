@@ -106,7 +106,7 @@ async def get_task_status(task_id: str):
     return {"status": "processing", "stage": "unknown"}
 
 @app.post("/transcribe")
-def transcribe(request: TranscribeRequest):
+async def transcribe(request: TranscribeRequest):
     """Run the transcription and first-stage refinement (Hinglish)."""
     if not os.path.exists(request.path):
         raise HTTPException(
@@ -122,7 +122,7 @@ def transcribe(request: TranscribeRequest):
 
         debug_mode = logging.getLogger("VoxRefine").getEffectiveLevel() == logging.DEBUG
 
-        refined_text, duration = pipeline.run_pipeline(
+        refined_text, duration = await pipeline.run_pipeline(
             request.path,
             request.model,
             MODEL_MAP,
@@ -170,7 +170,9 @@ async def stop_task(task_id: str):
         )
 
     try:
-        process = active_tasks[task_id]
+        # Handle both the new dict format and the old direct process format
+        task_data = active_tasks[task_id]
+        process = task_data["process"] if isinstance(task_data, dict) else task_data
         pid = process.pid
         logger.info(f"Attempting to terminate process {pid} for task {task_id}")
 
@@ -195,7 +197,7 @@ async def stop_task(task_id: str):
 
 
 @app.post("/convert-devnagari")
-def convert_devnagari(request: dict):
+async def convert_devnagari(request: dict):
     """Convert cleaned Hinglish text to Devnagari."""
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
@@ -204,7 +206,7 @@ def convert_devnagari(request: dict):
         raise HTTPException(status_code=400, detail="No text provided for conversion")
 
     try:
-        devnagari_text = pipeline.convert_to_devnagari(text, full_conversion)
+        devnagari_text = await pipeline.convert_to_devnagari(text, full_conversion)
         return {"text": devnagari_text}
     except ExternalServiceError as e:
         raise HTTPException(

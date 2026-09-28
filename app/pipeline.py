@@ -1,7 +1,8 @@
+import asyncio
 import json
 import logging
 import os
-import subprocess
+import shutil
 import time
 import urllib.request
 
@@ -20,43 +21,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger("VoxRefine")
 
-
 class VoxRefineError(Exception):
     """Base exception for VoxRefine pipeline errors."""
-
     pass
-
 
 class DependencyError(VoxRefineError):
     """Raised when a system dependency (ffmpeg, binaries) is missing."""
-
     pass
-
 
 class ModelNotFoundError(VoxRefineError):
     """Raised when a whisper model file is not found."""
-
     pass
-
 
 class ExternalServiceError(VoxRefineError):
     """Raised when Ollama API is unavailable or returns an error."""
-
     pass
-
 
 class ProcessingError(VoxRefineError):
     """Raised when transcription or refinement fails."""
-
     pass
-
 
 class TranscriptionPipeline:
     def __init__(self):
         if not os.path.exists(TEMP_DIR):
             os.makedirs(TEMP_DIR)
 
-    def preprocess_audio(
+    async def preprocess_audio(
         self, source_path, task_id=None, active_tasks=None, debug=False
     ):
         """
@@ -65,11 +55,9 @@ class TranscriptionPipeline:
         if debug:
             logger.debug(f"Starting preprocess_audio for task {task_id}")
         
-        # Use task_id to create a unique filename and prevent collisions
         filename = f"processed_{task_id}.wav" if task_id else "processed.wav"
         target_wav = os.path.join(TEMP_DIR, filename)
         
-        # Overwrite existing file
         cmd = [
             "ffmpeg",
             "-y",
@@ -87,9 +75,11 @@ class TranscriptionPipeline:
         ]
 
         try:
-            # Use Popen instead of run to allow termination
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            # Create async subprocess
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
 
             if task_id and active_tasks is not None:
@@ -98,29 +88,28 @@ class TranscriptionPipeline:
                 else:
                     active_tasks[task_id] = process
 
-            # Call communicate() directly to avoid pipe buffer deadlocks.
-            # This blocks the thread until the process completes, but FastAPI
-            # runs this in a separate thread, so it's safe.
+            # Wait for process to complete with timeout
             try:
-                stdout, stderr = process.communicate(timeout=3600)
-            except subprocess.TimeoutExpired:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=3600)
+            except asyncio.TimeoutError:
                 process.kill()
-                stdout, stderr = process.communicate()
+                await process.wait()
                 raise ProcessingError("FFmpeg processing timed out after 1 hour")
 
             if process.returncode != 0:
-                raise ProcessingError(f"FFmpeg processing failed: {stderr}")
+                raise ProcessingError(f"FFmpeg processing failed: {stderr.decode() if stderr else 'Unknown error'}")
 
         except FileNotFoundError:
             raise DependencyError(
                 "FFmpeg not found. Please install FFmpeg and add it to your system PATH."
             )
         except Exception as e:
+            if isinstance(e, ProcessingError): raise e
             raise ProcessingError(f"Unexpected FFmpeg error: {str(e)}")
 
         return target_wav
 
-    def transcribe(
+    async def transcribe(
         self, wav_path, model_path, task_id=None, active_tasks=None, debug=False
     ):
         """
@@ -133,13 +122,13 @@ class TranscriptionPipeline:
                 f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py."
             )
         
-        # whisper-cli.exe -m [model] -f [wav] -otxt
         cmd = [WHISPER_CLI_PATH, "-m", model_path, "-f", wav_path, "-otxt"]
 
         try:
-            # Use Popen instead of run to allow termination
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
 
             if task_id and active_tasks is not None:
@@ -148,21 +137,19 @@ class TranscriptionPipeline:
                 else:
                     active_tasks[task_id] = process
 
-            # Call communicate() directly to avoid pipe buffer deadlocks.
             try:
-                stdout, stderr = process.communicate(timeout=3600)
-            except subprocess.TimeoutExpired:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=3600)
+            except asyncio.TimeoutError:
                 process.kill()
-                stdout, stderr = process.communicate()
+                await process.wait()
                 raise ProcessingError("Whisper transcription timed out after 1 hour")
 
             if process.returncode != 0:
-                raise ProcessingError(f"Whisper transcription failed: {stderr}")
+                raise ProcessingError(f"Whisper transcription failed: {stderr.decode() if stderr else 'Unknown error'}")
         except Exception as e:
+            if isinstance(e, ProcessingError): raise e
             raise ProcessingError(f"Unexpected error during transcription: {str(e)}")
 
-        # Whisper-cli typically creates a file with the same base name as the input + .txt
-        # If input is processed.wav, output is usually processed.wav.txt
         txt_path = wav_path + ".txt"
         if not os.path.exists(txt_path):
             raise ProcessingError(f"Transcription output file not found: {txt_path}")
@@ -172,17 +159,18 @@ class TranscriptionPipeline:
 
         return raw_text
 
-    def refine_text(self, raw_text):
+    async def refine_text(self, raw_text):
         """
         Always first clean the text to fix typos/slang/grammar.
         """
-        return self._call_ollama(HINGLISH_PROMPT_TEMPLATE.format(text=raw_text))
+        # Since urllib is synchronous, we wrap the call in a thread to keep the loop free
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._call_ollama, HINGLISH_PROMPT_TEMPLATE.format(text=raw_text))
 
-    def convert_to_devnagari(self, cleaned_text, full_conversion=False):
+    async def convert_to_devnagari(self, cleaned_text, full_conversion=False):
         """
         Convert cleaned Romanized Hinglish to the configured native script.
         """
-        # Use the dynamic TARGET_SCRIPT from config
         script_name = TARGET_SCRIPT if TARGET_SCRIPT else "Hindi (Devnagari)"
 
         rule = (
@@ -191,14 +179,12 @@ class TranscriptionPipeline:
             else f"1. ABSOLUTE REQUIREMENT: Convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
         )
 
-        # Few-shot examples to anchor the model to the correct script
         examples = (
             f"Example 1 (Partial):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में laptop है' (If {script_name} is Hindi)\n\n"
             f"Example 2 (Full):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में लैपटॉप है' (If {script_name} is Hindi)\n\n"
             "Note: Always match the exact script requested in the TARGET_SCRIPT field."
         )
 
-        # Reinforced prompt to fight LLM bias
         prompt = (
             f"You are a highly skilled linguist specializing in the {script_name} script. "
             f"Your task is to translate the following Romanized Hinglish text into the {script_name} script.\n\n"
@@ -209,7 +195,9 @@ class TranscriptionPipeline:
             f"REFERENCE EXAMPLES:\n{examples}\n\n"
             f"Text to convert:\n{cleaned_text}"
         )
-        return self._call_ollama(prompt)
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._call_ollama, prompt)
 
     def _call_ollama(self, prompt):
         """
@@ -254,7 +242,7 @@ class TranscriptionPipeline:
         except Exception as e:
             logger.error(f"Error cleaning up task {task_id}: {e}")
 
-    def run_pipeline(
+    async def run_pipeline(
         self,
         source_path,
         model_key,
@@ -274,13 +262,11 @@ class TranscriptionPipeline:
         if model_key not in model_map:
             raise ValueError(f"Invalid model key: {model_key}")
 
-        # Handle the new MODEL_MAP structure where value is a dict with 'file' and 'url'
         model_info = model_map[model_key]
         model_filename = (
             model_info["file"] if isinstance(model_info, dict) else model_info
         )
 
-        # Ensure we have the absolute path to the model file
         from app.config import MODELS_DIR
 
         model_path = (
@@ -295,27 +281,26 @@ class TranscriptionPipeline:
                 f"Please run 'uv run python scripts/setup.py' to download the required models."
             )
 
-        # 1. Preprocess
         if active_tasks is not None:
             active_tasks[task_id] = {"status": "ffmpeg", "start_time": start_time}
         
-        wav_path = self.preprocess_audio(
+        wav_path = await self.preprocess_audio(
             source_path, task_id, active_tasks, debug=debug
         )
 
-        # 2. Transcribe
         if active_tasks is not None:
             active_tasks[task_id]["status"] = "whisper"
         
-        raw_text = self.transcribe(
+        raw_text = await self.transcribe(
             wav_path, model_path, task_id, active_tasks, debug=debug
         )
 
-        # 3. Refine
         if active_tasks is not None:
             active_tasks[task_id]["status"] = "ollama"
         
-        refined_text = self.refine_text(raw_text)
+        refined_text = await self.refine_text(raw_text)
 
+        total_duration = time.time() - start_time
+        return refined_text, total_duration
         total_duration = time.time() - start_time
         return refined_text, total_duration
