@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.config import MODEL_MAP, PROJECT_ROOT, TEMP_DIR
+from app.config import MODEL_MAP, PROJECT_ROOT, TEMP_DIR, settings
 from app.pipeline import (
     DependencyError,
     ExternalServiceError,
@@ -199,8 +199,7 @@ async def stop_task(task_id: str):
 @app.post("/convert-native-script")
 async def convert_native_script(request: dict):
     """Translate and convert cleaned Hinglish text to the configured native script."""
-    from app.config import TARGET_SCRIPT
-    logger.info(f"Converting text to native script: {TARGET_SCRIPT}")
+    logger.info(f"Converting text to native script: {settings.TARGET_SCRIPT}")
     
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
@@ -231,13 +230,11 @@ class SettingsRequest(BaseModel):
 @app.get("/settings")
 async def get_settings():
     """Return current API and Model settings."""
-    import app.config as config
-
     return {
-        "OLLAMA_API_URL": config.OLLAMA_API_URL,
-        "OLLAMA_MODEL": config.OLLAMA_MODEL,
-        "OLLAMA_API_KEY": config.OLLAMA_API_KEY,
-        "TARGET_SCRIPT": config.TARGET_SCRIPT,
+        "OLLAMA_API_URL": settings.OLLAMA_API_URL,
+        "OLLAMA_MODEL": settings.OLLAMA_MODEL,
+        "OLLAMA_API_KEY": settings.OLLAMA_API_KEY,
+        "TARGET_SCRIPT": settings.TARGET_SCRIPT,
     }
 
 
@@ -245,24 +242,14 @@ async def get_settings():
 async def save_settings(request: SettingsRequest):
     """Save settings to settings.json and update config."""
     try:
-        settings_data = {
-            "OLLAMA_API_URL": request.OLLAMA_API_URL,
-            "OLLAMA_MODEL": request.OLLAMA_MODEL,
-            "OLLAMA_API_KEY": request.OLLAMA_API_KEY,
-            "TARGET_SCRIPT": request.TARGET_SCRIPT,
-        }
-        with open(PROJECT_ROOT / "settings.json", "w") as f:
-            json.dump(settings_data, f, indent=4)
-
-        # Update the active config in memory
-        import app.config as config
-
-        config.OLLAMA_API_URL = request.OLLAMA_API_URL
-        config.OLLAMA_MODEL = request.OLLAMA_MODEL
-        config.OLLAMA_API_KEY = request.OLLAMA_API_KEY
-        config.TARGET_SCRIPT = request.TARGET_SCRIPT
-
-        return {"status": "Settings saved successfully"}
+        # Update the settings object
+        settings.OLLAMA_API_URL = request.OLLAMA_API_URL
+        settings.OLLAMA_MODEL = request.OLLAMA_MODEL
+        settings.OLLAMA_API_KEY = request.OLLAMA_API_KEY
+        settings.TARGET_SCRIPT = request.TARGET_SCRIPT
+        
+        # Save to disk
+        settings.save()
 
         return {"status": "Settings saved successfully"}
     except Exception as e:

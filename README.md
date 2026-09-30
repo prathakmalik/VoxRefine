@@ -28,14 +28,21 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
    cd VoxRefine
    ```
 
-2. **Install dependencies**:
+2. **Configure Environment**:
+   Copy the example environment file and add your API key:
+   ```bash
+   cp .env.example .env
+   ```
+   Open `.env` in any text editor and replace `your_api_key_here` with your actual Ollama API key.
+
+3. **Install dependencies**:
    ```bash
    uv sync
    # OR using standard pip:
    pip install -r requirements.txt
    ```
 
-3. **Initialize the engine (Binaries & Models)**:
+4. **Initialize the engine (Binaries & Models)**:
    Run the setup script. It will detect your GPU and ask which models you'd like to download.
    ```bash
    uv run python scripts/setup.py

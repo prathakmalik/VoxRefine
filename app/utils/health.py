@@ -2,7 +2,7 @@ import shutil
 import urllib.request
 from pathlib import Path
 
-from app.config import OLLAMA_API_URL, WHISPER_CLI_PATH
+from app.config import WHISPER_CLI_PATH, settings
 
 
 def check_ffmpeg():
@@ -19,15 +19,13 @@ def check_ollama():
     """Verify if the Ollama server is responding."""
     try:
         # Determine the base URL to check health.
-        # If the URL is already a specific endpoint (like /api/generate or /api/chat),
-        # we need to get to the base URL to check the root or /api/tags.
-        base_url = OLLAMA_API_URL
+        base_url = settings.OLLAMA_API_URL
         for endpoint in ["/api/generate", "/api/chat"]:
             if base_url.endswith(endpoint):
                 base_url = base_url[: -len(endpoint)]
-        
+
         # Try /api/tags as it's a standard lightweight endpoint
-        url = base_url.rstrip('/') + "/api/tags"
+        url = base_url.rstrip("/") + "/api/tags"
         with urllib.request.urlopen(url, timeout=2) as response:
             return response.status == 200
     except Exception:
