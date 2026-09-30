@@ -1,16 +1,19 @@
 import shutil
 import urllib.request
-import json
 from pathlib import Path
-from app.config import WHISPER_CLI_PATH, OLLAMA_API_URL
+
+from app.config import OLLAMA_API_URL, WHISPER_CLI_PATH
+
 
 def check_ffmpeg():
     """Verify if ffmpeg is installed and available in PATH."""
     return shutil.which("ffmpeg") is not None
 
+
 def check_whisper_binaries():
     """Verify if the whisper-cli executable exists."""
     return Path(WHISPER_CLI_PATH).exists()
+
 
 def check_ollama():
     """Verify if the Ollama server is responding."""
@@ -22,6 +25,7 @@ def check_ollama():
             return response.status == 200
     except Exception:
         return False
+
 
 def get_system_health():
     """
@@ -38,5 +42,5 @@ def get_system_health():
     return {
         "status": status,
         "checks": health,
-        "missing": [k for k, v in health.items() if not v]
+        "missing": [k for k, v in health.items() if not v],
     }
