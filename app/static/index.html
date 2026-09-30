@@ -128,7 +128,7 @@
                     </div>
                     <div id="step-ollama" class="status-step status-pending flex flex-col items-center gap-2">
                         <div class="w-8 h-8 rounded-full bg-slate-900 border-2 border-current flex items-center justify-center text-xs font-bold">3</div>
-                        <span class="text-[10px] uppercase font-bold">Ollama</span>
+                        <span class="text-[10px] uppercase font-bold">AI Refinement</span>
                     </div>
                 </div>
             </div>
@@ -138,30 +138,30 @@
         <section id="resultsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-6 opacity-40 pointer-events-none transition-opacity duration-500">
             
             <!-- Raw Transcription -->
-            <div class="glass rounded-2xl overflow-hidden flex flex-col h-full">
-                <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between">
+            <div class="glass rounded-2xl flex flex-col h-full">
+                <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between rounded-t-2xl">
                     <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400">Raw Transcription</h3>
                     <button onclick="copyText('resultText')" class="text-slate-500 hover:text-white transition-colors p-1">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
-                <textarea id="resultText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-y" placeholder="Waiting for transcription..."></textarea>
+                <textarea id="resultText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-y rounded-b-2xl" placeholder="Waiting for transcription..."></textarea>
             </div>
 
             <!-- Refined Hinglish -->
-            <div class="glass rounded-2xl overflow-hidden flex flex-col h-full">
-                <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between">
-                    <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400">Refined Hinglish</h3>
+            <div class="glass rounded-2xl flex flex-col h-full border-indigo-500/20">
+                <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between rounded-t-2xl">
+                    <h3 class="text-xs font-bold uppercase tracking-widest text-indigo-400">Refined Hinglish</h3>
                     <button onclick="copyText('refinedText')" class="text-slate-500 hover:text-white transition-colors p-1">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
-                <textarea id="refinedText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-indigo-300 outline-none resize-y" placeholder="Waiting for refinement..."></textarea>
+                <textarea id="refinedText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-y rounded-b-2xl" placeholder="Waiting for refinement..."></textarea>
             </div>
 
             <!-- Native Script -->
-            <div class="glass rounded-2xl overflow-hidden flex flex-col border-indigo-500/30 h-full">
-                <div class="px-4 py-3 bg-indigo-900/20 border-b border-slate-800 flex items-center justify-between">
+            <div class="glass rounded-2xl flex flex-col border-indigo-500/30 h-full">
+                <div class="px-4 py-3 bg-indigo-900/20 border-b border-slate-800 flex items-center justify-between rounded-t-2xl">
                     <h3 id="nativeScriptResultLabel" class="text-xs font-bold uppercase tracking-widest text-indigo-400">Native Script</h3>
                     <button onclick="copyText('nativeText')" class="text-slate-500 hover:text-white transition-colors p-1">
                         <i class="fas fa-copy"></i>
@@ -188,7 +188,7 @@
                     </button>
                 </div>
 
-                <textarea id="nativeText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-white outline-none resize-y" placeholder="Waiting for conversion..."></textarea>
+                <textarea id="nativeText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-white outline-none resize-y rounded-b-2xl" placeholder="Waiting for conversion..."></textarea>
             </div>
         </section>
     </main>
