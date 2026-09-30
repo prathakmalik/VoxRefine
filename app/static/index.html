@@ -3,354 +3,229 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hinglish Transcribe & Clean</title>
+    <title>VoxRefine | Professional AI Transcription</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1000px;
-            margin: 40px auto;
-            padding: 20px;
-            background-color: #f4f7f6;
-            color: #333;
+            font-family: 'Inter', sans-serif;
+            background-color: #020617; /* slate-950 */
         }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            position: relative;
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
         }
-        h1 {
-            text-align: center;
-            color: #2c3e50;
-            margin-bottom: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
+        .status-step {
+            transition: all 0.3s ease;
         }
-        .health-badge {
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 12px;
-            color: white;
-            font-weight: normal;
-            text-transform: uppercase;
-        }
-        .health-healthy { background-color: #27ae60; }
-        .health-unhealthy { background-color: #e74c3c; }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
+        .status-active {
+            color: #6366f1; /* indigo-500 */
             font-weight: 600;
-            color: #555;
         }
-        input[type="text"], select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            box-sizing: border-box;
-            font-size: 16px;
+        .status-complete {
+            color: #10b981; /* emerald-500 */
         }
-        .actions {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
+        .status-pending {
+            color: #475569; /* slate-500 */
         }
-        #stopBtn {
-            background-color: #f39c12;
-            color: white;
-            display: none;
+        .loader {
+            border-top-color: #6366f1;
+            animation: spinner 0.6s linear infinite;
         }
-        #stopBtn:hover { background-color: #e67e22; }
-        button {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
-        .btn-primary {
-            background-color: #3498db;
-            color: white;
-        }
-        .btn-primary:hover {
-            background-color: #2980b9;
-        }
-        .btn-secondary {
-            background-color: #e74c3c;
-            color: white;
-        }
-        .btn-secondary:hover {
-            background-color: #c0392b;
-        }
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-        .status {
-            text-align: center;
-            margin-bottom: 15px;
-            font-weight: 500;
-            min-height: 24px;
-        }
-        .error { color: #e74c3c; }
-        .success { color: #27ae60; }
-        .loading { color: #3498db; }
-
-        /* Spinner Animation */
-        .spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* New Layout Styles */
-        .result-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 20px;
-        }
-        @media (max-width: 768px) {
-            .result-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        .result-box {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .copy-btn {
-            align-self: flex-end;
-            padding: 5px 10px;
-            font-size: 12px;
-            background-color: #ddd;
-            color: #333;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .copy-btn:hover { background-color: #ccc; }
-        .conversion-controls {
-            background: #eee;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-            border: 1px solid #ddd;
-        }
-        textarea {
-            width: 100%;
-            height: 300px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            box-sizing: border-box;
-            font-size: 16px;
-            line-height: 1.6;
-            resize: vertical;
-            background-color: #fafafa;
-        }
-
-        /* Settings Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-content {
-            background-color: white;
-            padding: 30px;
-            border-radius: 12px;
-            width: 400px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .close-modal {
-            cursor: pointer;
-            font-size: 24px;
-            font-weight: bold;
-        }
-        .settings-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-top: 20px;
-        }
-
-        /* Toast Notifications */
-        #toast-container {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 2000;
-        }
-        .toast {
-            background: #333;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 6px;
-            margin-top: 10px;
-            font-size: 14px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            animation: slideIn 0.3s ease-out;
-        }
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        .btn-settings {
-            background-color: #95a5a6;
-            color: white;
-            width: auto;
-            padding: 8px 15px;
-            font-size: 14px;
-            border-radius: 50px;
-            cursor: pointer;
-            position: absolute;
-            top: 20px;
-            right: 20px;
-        }
-        .btn-settings:hover { background-color: #7f8c8d; }
-
     </style>
 </head>
-<body>
-    <div class="container">
-        <button id="settingsBtn" class="btn-settings">⚙️ Settings</button>
-        <h1>🎙️ Hinglish Transcriber <span id="healthBadge" class="health-badge">Checking...</span></h1>
+<body class="text-slate-200 min-h-screen pb-12">
 
-        <div class="form-group">
-            <label for="filePath">Source File Path</label>
-            <div style="display: flex; gap: 10px;">
-                <input type="text" id="filePath" placeholder="C:\videos\my_video.mp4" style="flex: 1;">
-                <button id="browseBtn" class="btn-secondary" style="flex: 0 0 auto; width: auto; padding: 0 20px;">Browse</button>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label for="modelSelect">Whisper Model</label>
-            <select id="modelSelect">
-                <option value="">Loading models...</option>
-            </select>
-        </div>
-
-        <div class="actions">
-            <button id="processBtn" class="btn-primary">Start Processing</button>
-            <button id="stopBtn">Stop Processing ⏹️</button>
-            <button id="clearBtn" class="btn-secondary">Clear Temp Files</button>
-        </div>
-
-        <div id="status" class="status"></div>
-
-        <div id="devnagari-section" style="display: none;">
-            <div class="conversion-controls" style="display: block;">
-                <label id="nativeScriptOptionsLabel" style="font-weight: bold; margin-bottom: 10px; display: block;">Devnagari Options</label>
-                <div style="display: flex; gap: 20px; margin-bottom: 15px;">
-                    <label style="font-weight: normal; cursor: pointer;">
-                        <input type="radio" name="convType" value="partial"> Keep English as English
-                    </label>
-                    <label style="font-weight: normal; cursor: pointer;">
-                        <input type="radio" name="convType" value="full" id="fullConvLabel" checked> Full ${script} Conversion
-                    </label>
+    <!-- Header -->
+    <nav class="border-b border-slate-800 bg-slate-900/50 sticky top-0 z-50 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-indigo-600 p-2 rounded-lg">
+                    <i class="fas fa-microphone-lines text-white text-xl"></i>
                 </div>
-                <button id="convertBtn" class="btn-primary" style="width: auto; padding: 8px 20px;">Convert to Native Script ➔</button>
+                <h1 class="text-xl font-bold tracking-tight text-white">VoxRefine <span class="text-indigo-400 font-medium text-sm ml-2">v1.0</span></h1>
             </div>
+            <div class="flex items-center gap-4">
+                <div id="healthBadge" class="px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 transition-colors duration-300">
+                    <span class="w-2 h-2 rounded-full bg-current"></span>
+                    <span id="healthText">Checking Health...</span>
+                </div>
+                <button id="settingsBtn" class="p-2 rounded-lg hover:bg-slate-800 transition-colors text-slate-400 hover:text-white">
+                    <i class="fas fa-cog text-lg"></i>
+                </button>
+            </div>
+        </nav>
 
-            <div class="result-grid">
-                <div class="result-box">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label>Romanized Hinglish</label>
-                        <button class="copy-btn" onclick="copyText('resultText')">Copy</button>
+    <main class="max-w-7xl mx-auto px-4 mt-8 space-y-8">
+        
+        <!-- Control Panel -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 glass p-6 rounded-2xl space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-slate-400 ml-1">Source Audio/Video File</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="filePath" placeholder="C:\path\to\your\file.mp4" 
+                                   class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                            <button id="browseBtn" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+                                <i class="fas fa-folder-open"></i> Browse
+                            </button>
+                        </div>
                     </div>
-                    <textarea id="resultText" readonly placeholder="The processed transcript will appear here..."></textarea>
-                </div>
-                <div class="result-box">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label id="nativeScriptResultLabel">Hindi (Devnagari)</label>
-                        <button class="copy-btn" onclick="copyText('devnagariText')">Copy</button>
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-slate-400 ml-1">Whisper Model</label>
+                        <select id="modelSelect" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none">
+                            <option value="">Loading models...</option>
+                        </select>
                     </div>
-                    <textarea id="devnagariText" readonly placeholder="Conversion result..."></textarea>
                 </div>
-            </div>
-        </div>
 
-        <div id="single-result" style="display: none;">
-            <div class="result-box">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <label>Romanized Hinglish</label>
-                    <button class="copy-btn" onclick="copyText('resultTextSingle')">Copy</button>
+                <div class="flex items-center justify-between pt-4 border-t border-slate-800">
+                    <div id="status" class="text-sm font-medium text-slate-500 flex items-center gap-2">
+                        Ready to process
+                    </div>
+                    <div class="flex gap-3">
+                        <button id="clearBtn" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-rose-400 transition-colors">
+                            Clear Temp Files
+                        </button>
+                        <button id="processBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/20">
+                            <i class="fas fa-play"></i> Start Processing
+                        </button>
+                        <button id="stopBtn" class="hidden bg-rose-600 hover:bg-rose-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-rose-500/20">
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                    </div>
                 </div>
-                <textarea id="resultTextSingle" readonly placeholder="The processed transcript will appear here..."></textarea>
             </div>
-        </div>
-    </div>
+
+            <!-- Status Stepper -->
+            <div class="glass p-6 rounded-2xl flex flex-col justify-center space-y-6">
+                <h3 class="text-center text-sm font-semibold text-slate-400 uppercase tracking-wider">Pipeline Stage</h3>
+                <div class="flex justify-between items-center relative">
+                    <!-- Connecting Line -->
+                    <div class="absolute top-1/2 left-0 w-full h-0.5 bg-slate-800 -z-10"></div>
+                    
+                    <div id="step-ffmpeg" class="status-step status-pending flex flex-col items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-slate-900 border-2 border-current flex items-center justify-center text-xs font-bold">1</div>
+                        <span class="text-[10px] uppercase font-bold">FFmpeg</span>
+                    </div>
+                    <div id="step-whisper" class="status-step status-pending flex flex-col items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-slate-900 border-2 border-current flex items-center justify-center text-xs font-bold">2</div>
+                        <span class="text-[10px] uppercase font-bold">Whisper</span>
+                    </div>
+                    <div id="step-ollama" class="status-step status-pending flex flex-col items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-slate-900 border-2 border-current flex items-center justify-center text-xs font-bold">3</div>
+                        <span class="text-[10px] uppercase font-bold">Ollama</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Grid -->
+        <section id="resultsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-6 opacity-40 pointer-events-none transition-opacity duration-500">
+            
+            <!-- Raw Transcription -->
+            <div class="glass rounded-2xl overflow-hidden flex flex-col">
+                <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between">
+                    <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400">Raw Transcription</h3>
+                    <button onclick="copyText('resultText')" class="text-slate-500 hover:text-white transition-colors p-1">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <textarea id="resultText" readonly class="flex-1 w-full h-64 bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-none" placeholder="Waiting for transcription..."></textarea>
+            </div>
+
+            <!-- Refined Hinglish -->
+            <div class="glass rounded-2xl overflow-hidden flex flex-col">
+                <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between">
+                    <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400">Refined Hinglish</h3>
+                    <button onclick="copyText('refinedText')" class="text-slate-500 hover:text-white transition-colors p-1">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <textarea id="refinedText" readonly class="flex-1 w-full h-64 bg-transparent p-4 text-sm mono text-indigo-300 outline-none resize-none" placeholder="Waiting for refinement..."></textarea>
+            </div>
+
+            <!-- Native Script -->
+            <div class="glass rounded-2xl overflow-hidden flex flex-col border-indigo-500/30">
+                <div class="px-4 py-3 bg-indigo-900/20 border-b border-slate-800 flex items-center justify-between">
+                    <h3 id="nativeScriptResultLabel" class="text-xs font-bold uppercase tracking-widest text-indigo-400">Native Script</h3>
+                    <button onclick="copyText('nativeText')" class="text-slate-500 hover:text-white transition-colors p-1">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                
+                <!-- Conversion Controls -->
+                <div class="px-4 py-3 bg-slate-900/50 border-b border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between gap-4">
+                        <div id="nativeScriptOptionsLabel" class="text-[10px] font-bold uppercase text-slate-500">Options</div>
+                        <div class="flex items-center gap-4 text-xs">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="convType" value="partial" checked class="w-3 h-3 accent-indigo-500">
+                                <span class="text-slate-400 group-hover:text-white transition-colors">Partial</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="convType" value="full" class="w-3 h-3 accent-indigo-500">
+                                <span class="text-slate-400 group-hover:text-white transition-colors">Full</span>
+                            </label>
+                        </div>
+                    </div>
+                    <button id="convertBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2">
+                        Convert to Native Script ➔
+                    </button>
+                </div>
+
+                <textarea id="nativeText" readonly class="flex-1 w-full h-48 bg-transparent p-4 text-sm mono text-white outline-none resize-none" placeholder="Waiting for conversion..."></textarea>
+            </div>
+        </section>
+    </main>
 
     <!-- Settings Modal -->
-    <div id="settingsModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>⚙️ Settings</h2>
-                <span id="closeModal" class="close-modal">&times;</span>
+    <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
+        <div class="glass w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div class="px-6 py-4 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between">
+                <h2 class="text-lg font-bold text-white">Application Settings</h2>
+                <button id="closeModal" class="text-slate-400 hover:text-white transition-colors">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
-            <div class="form-group">
-                <label for="ollamaUrl">Ollama API URL</label>
-                <input type="text" id="ollamaUrl" placeholder="http://localhost:11434/api/generate">
+            <div class="p-6 space-y-4">
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-slate-400 uppercase ml-1">Ollama API URL</label>
+                    <input type="text" id="ollamaUrl" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-slate-400 uppercase ml-1">Ollama Model</label>
+                    <input type="text" id="ollamaModel" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-slate-400 uppercase ml-1">Ollama API Key</label>
+                    <input type="password" id="ollamaApiKey" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-slate-400 uppercase ml-1">Target Native Script</label>
+                    <input type="text" id="targetScript" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
             </div>
-            <div class="form-group">
-                <label for="ollamaModel">Ollama Model</label>
-                <input type="text" id="ollamaModel" placeholder="gemma4:31b-cloud">
-            </div>
-            <div class="form-group">
-                <label for="ollamaApiKey">Ollama API Key (Optional)</label>
-                <input type="password" id="ollamaApiKey" placeholder="Enter your API key">
-            </div>
-            <div class="form-group">
-                <label for="targetScript">Target Native Script</label>
-                <input type="text" id="targetScript" placeholder="Hindi (Devnagari)">
-            </div>
-            <div class="settings-actions">
-                <button id="cancelSettings" class="btn-secondary" style="flex: 0 0 auto; width: auto;">Cancel</button>
-                <button id="saveSettings" class="btn-primary" style="flex: 0 0 auto; width: auto;">Save Changes</button>
+            <div class="px-6 py-4 bg-slate-800/30 border-t border-slate-700 flex justify-end gap-3">
+                <button id="cancelSettings" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">Cancel</button>
+                <button id="saveSettings" class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all">Save Changes</button>
             </div>
         </div>
     </div>
 
-    <div id="toast-container"></div>
+    <div id="toast-container" class="fixed bottom-6 right-6 z-[200] flex flex-col gap-3"></div>
 
     <script>
+        // --- DOM Elements ---
         const filePathInput = document.getElementById('filePath');
         const browseBtn = document.getElementById('browseBtn');
         const modelSelect = document.getElementById('modelSelect');
@@ -358,12 +233,14 @@
         const stopBtn = document.getElementById('stopBtn');
         const clearBtn = document.getElementById('clearBtn');
         const resultText = document.getElementById('resultText');
-        const devnagariText = document.getElementById('devnagariText');
+        const refinedText = document.getElementById('refinedText');
+        const nativeText = document.getElementById('nativeText');
         const statusDiv = document.getElementById('status');
         const healthBadge = document.getElementById('healthBadge');
-        const nativeScriptLabel = document.getElementById('nativeScriptLabel');
+        const healthText = document.getElementById('healthText');
         const nativeScriptResultLabel = document.getElementById('nativeScriptResultLabel');
-
+        const resultsSection = document.getElementById('resultsSection');
+        
         let currentTaskId = null;
         let currentAbortController = null;
 
@@ -378,46 +255,41 @@
         const ollamaApiKeyInput = document.getElementById('ollamaApiKey');
         const targetScriptInput = document.getElementById('targetScript');
 
+        // --- Utility Functions ---
+
         function updateDynamicLabels() {
             fetch('/settings')
                 .then(res => res.json())
                 .then(data => {
                     const script = data.TARGET_SCRIPT || 'Devnagari';
-
-                    // Update the main conversion button
                     const btn = document.getElementById('convertBtn');
                     if (btn) btn.textContent = `Convert to ${script} ➔`;
-
-                    // Update the result label
-                    const label = document.getElementById('nativeScriptResultLabel');
-                    if (label) label.textContent = `${script}`;
-
-                    // Update the options header
+                    if (nativeScriptResultLabel) nativeScriptResultLabel.textContent = script;
+                    
                     const optionsLabel = document.getElementById('nativeScriptOptionsLabel');
                     if (optionsLabel) optionsLabel.textContent = `${script} Options`;
-
-                    // Update the 'Full Conversion' radio label
-                    const fullConvLabel = document.getElementById('fullConvLabel');
-                    if (fullConvLabel) {
-                        const labelElem = fullConvLabel.parentElement;
-                        labelElem.innerHTML = `<input type="radio" name="convType" value="full" id="fullConvLabel" checked> Full ${script} Conversion`;
-                    }
                 })
                 .catch(err => console.error('Error updating labels:', err));
         }
 
         function setStatus(msg, type = '') {
             statusDiv.textContent = msg;
-            statusDiv.className = 'status ' + type;
+            statusDiv.className = 'text-sm font-medium transition-colors duration-300 ' + 
+                                 (type === 'error' ? 'text-rose-400' : 
+                                  type === 'success' ? 'text-emerald-400' : 
+                                  type === 'loading' ? 'text-indigo-400' : 'text-slate-500');
         }
 
         function showToast(msg) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            toast.className = 'toast';
+            toast.className = 'glass px-4 py-3 rounded-xl text-sm text-white shadow-xl animate-in slide-in-from-right duration-300 border-l-4 border-indigo-500';
             toast.textContent = msg;
             container.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-x-full', 'transition-all', 'duration-300');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
 
         function copyText(id) {
@@ -426,27 +298,29 @@
             showToast('Copied to clipboard!');
         }
 
+        function updateStep(stepId, state) {
+            const step = document.getElementById(`step-${stepId}`);
+            if (!step) return;
+            step.className = `status-step flex flex-col items-center gap-2 status-${state}`;
+        }
+
         async function checkHealth() {
             try {
                 const response = await fetch('/health');
                 const data = await response.json();
                 if (data.status === 'healthy') {
-                    healthBadge.textContent = 'Healthy';
-                    healthBadge.className = 'health-badge health-healthy';
+                    healthBadge.className = 'px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20';
+                    healthText.textContent = 'System Healthy';
                 } else {
-                    healthBadge.textContent = 'Issues Found';
-                    healthBadge.className = 'health-badge health-unhealthy';
-                    
-                    // Notify the user exactly what is missing
-                    if (data.missing && data.missing.length > 0) {
-                        data.missing.forEach(item => {
-                            showToast(`Dependency missing: ${item}. Please check setup.py`);
-                        });
+                    healthBadge.className = 'px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 bg-rose-500/10 text-rose-500 border border-rose-500/20';
+                    healthText.textContent = 'Issues Found';
+                    if (data.missing) {
+                        data.missing.forEach(item => showToast(`Missing: ${item}. Run setup.py`));
                     }
                 }
             } catch (err) {
-                healthBadge.textContent = 'Unknown';
-                healthBadge.className = 'health-badge health-unhealthy';
+                healthBadge.className = 'px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 bg-slate-500/10 text-slate-500 border border-slate-500/20';
+                healthText.textContent = 'Unknown Health';
             }
         }
 
@@ -465,6 +339,8 @@
                 setStatus('Error loading models', 'error');
             }
         }
+
+        // --- Event Handlers ---
 
         browseBtn.onclick = async () => {
             setStatus('Opening file picker...', 'loading');
@@ -486,58 +362,52 @@
             const path = filePathInput.value.trim();
             const model = modelSelect.value;
 
-            if (!path) {
-                setStatus('Please enter a source file path', 'error');
-                return;
-            }
-            if (!model) {
-                setStatus('Please select a model', 'error');
+            if (!path || !model) {
+                setStatus('Please provide file path and select a model', 'error');
                 return;
             }
 
-            // Generate task ID on the frontend so we have it immediately
             currentTaskId = crypto.randomUUID();
-
             processBtn.disabled = true;
-            stopBtn.style.display = 'flex';
+            stopBtn.classList.remove('hidden');
             const originalBtnText = processBtn.innerHTML;
-            processBtn.innerHTML = '<div class="spinner"></div> Processing...';
+            processBtn.innerHTML = '<div class="loader w-4 h-4 border-2 border-white rounded-full mr-2"></div> Processing...';
 
             resultText.value = '';
-            devnagariText.value = '';
-            document.getElementById('devnagari-section').style.display = 'none';
-            setStatus('Starting...', 'loading');
+            refinedText.value = '';
+            nativeText.value = '';
+            resultsSection.classList.add('opacity-40', 'pointer-events-none');
+            setStatus('Initializing...', 'loading');
 
             currentAbortController = new AbortController();
 
-            // Start polling for status updates
+            // Reset and start polling
+            ['ffmpeg', 'whisper', 'ollama'].forEach(s => updateStep(s, 'pending'));
+
             const statusInterval = setInterval(async () => {
                 try {
                     const statusRes = await fetch(`/task-status?task_id=${currentTaskId}`);
                     const statusData = await statusRes.json();
                     if (statusData.status === 'processing') {
                         const stage = statusData.stage || 'unknown';
-                        const stageNames = {
-                            'ffmpeg': 'FFmpeg (Preprocessing)',
-                            'whisper': 'Whisper (Transcribing)',
-                            'ollama': 'Ollama (Refining)'
-                        };
+                        const stageNames = { 'ffmpeg': 'FFmpeg', 'whisper': 'Whisper', 'ollama': 'Ollama' };
                         setStatus(`Processing... (${stageNames[stage] || stage})`, 'loading');
+                        
+                        // Update Stepper
+                        ['ffmpeg', 'whisper', 'ollama'].forEach(s => {
+                            if (s === stage) updateStep(s, 'active');
+                            else if (stage === 'whisper' && s === 'ffmpeg') updateStep(s, 'complete');
+                            else if (stage === 'ollama' && (s === 'ffmpeg' || s === 'whisper')) updateStep(s, 'complete');
+                        });
                     }
-                } catch (err) {
-                    console.error('Status polling error:', err);
-                }
+                } catch (err) { console.error(err); }
             }, 1000);
 
             try {
                 const response = await fetch('/transcribe', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        path,
-                        model,
-                        task_id: currentTaskId
-                    }),
+                    body: JSON.stringify({ path, model, task_id: currentTaskId }),
                     signal: currentAbortController.signal
                 });
 
@@ -547,135 +417,78 @@
                 }
 
                 const data = await response.json();
-                resultText.value = data.text;
-                document.getElementById('devnagari-section').style.display = 'block';
+                resultText.value = data.text; // This is the refined Hinglish from the current pipeline
+                refinedText.value = data.text; 
                 
+                resultsSection.classList.remove('opacity-40', 'pointer-events-none');
+                updateStep('ollama', 'complete');
                 const duration = data.duration ? ` in ${data.duration.toFixed(2)}s` : '';
                 setStatus(`Completed successfully!${duration}`, 'success');
             } catch (err) {
-                if (err.name === 'AbortError') {
-                    setStatus('Processing stopped by user', 'success');
-                } else {
-                    setStatus(err.message, 'error');
-                }
+                if (err.name === 'AbortError') setStatus('Stopped by user', 'success');
+                else setStatus(err.message, 'error');
             } finally {
                 clearInterval(statusInterval);
                 processBtn.disabled = false;
                 processBtn.innerHTML = originalBtnText;
-                stopBtn.style.display = 'none';
+                stopBtn.classList.add('hidden');
                 currentTaskId = null;
                 currentAbortController = null;
             }
         };
 
         stopBtn.onclick = async () => {
-            // 1. Immediately abort the browser request to stop waiting for the server
-            if (currentAbortController) {
-                currentAbortController.abort();
-            }
-
-            if (!currentTaskId) {
-                setStatus('No active system process to stop, but request cancelled', 'success');
-                // Reset UI state even if no task ID was found
-                processBtn.disabled = false;
-                processBtn.innerHTML = 'Start Processing';
-                stopBtn.style.display = 'none';
-                currentTaskId = null;
-                currentAbortController = null;
-                return;
-            }
-
+            if (currentAbortController) currentAbortController.abort();
+            if (!currentTaskId) return;
             try {
                 const response = await fetch(`/stop?task_id=${currentTaskId}`, { method: 'DELETE' });
-                if (!response.ok) {
-                    const errData = await response.json();
-                    // If the process is already gone but we are still waiting for API, just treat as success
-                    if (response.status === 404) {
-                        setStatus('Request cancelled successfully', 'success');
-                    } else {
-                        throw new Error(errData.detail || 'Failed to stop task');
-                    }
-                } else {
-                    setStatus('Task stopped successfully', 'success');
-                }
-            } catch (err) {
-                if (err.name === 'AbortError') {
-                    setStatus('Processing stopped by user', 'success');
-                } else {
-                    setStatus(err.message, 'error');
-                }
-            } finally {
+                if (response.ok) setStatus('Task stopped successfully', 'success');
+                else setStatus('Failed to stop task', 'error');
+            } catch (err) { setStatus(err.message, 'error'); } finally {
                 processBtn.disabled = false;
                 processBtn.innerHTML = 'Start Processing';
-                stopBtn.style.display = 'none';
+                stopBtn.classList.add('hidden');
                 currentTaskId = null;
                 currentAbortController = null;
             }
         };
 
         document.getElementById('convertBtn').onclick = async () => {
-            const text = resultText.value;
+            const text = refinedText.value;
             const convType = document.querySelector('input[name="convType"]:checked').value;
-
-            if (!text) {
-                setStatus('No text to convert', 'error');
-                return;
-            }
+            if (!text) { setStatus('No text to convert', 'error'); return; }
 
             const btn = document.getElementById('convertBtn');
             const originalBtnText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<div class="spinner"></div> Converting...';
-
-            // Dynamically get the script name for the status message
-            let scriptName = 'Native Script';
-            try {
-                const settingsRes = await fetch('/settings');
-                const settingsData = await settingsRes.json();
-                scriptName = settingsData.TARGET_SCRIPT || 'Native Script';
-            } catch (e) {
-                console.error('Could not fetch script name for status:', e);
-            }
-
-            setStatus(`Converting to ${scriptName}...`, 'loading');
+            btn.innerHTML = '<div class="loader w-4 h-4 border-2 border-white rounded-full mr-2"></div> Converting...';
+            
+            setStatus('Converting to native script...', 'loading');
             try {
                 const response = await fetch('/convert-native-script', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: text,
-                        full_conversion: convType === 'full'
-                    })
+                    body: JSON.stringify({ text, full_conversion: convType === 'full' })
                 });
-
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.detail || 'Conversion failed');
-                }
-
+                if (!response.ok) throw new Error('Conversion failed');
                 const data = await response.json();
-                devnagariText.value = data.text;
-                setStatus(`Converted to ${scriptName} successfully!`, 'success');
-            } catch (err) {
-                setStatus(err.message, 'error');
-            } finally {
+                nativeText.value = data.text;
+                setStatus('Conversion complete!', 'success');
+            } catch (err) { setStatus(err.message, 'error'); } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalBtnText;
             }
         };
 
         clearBtn.onclick = async () => {
-            if (!confirm('Are you sure you want to clear all intermediate files in the temp folder?')) return;
+            if (!confirm('Clear all temp files?')) return;
             try {
                 const response = await fetch('/temp', { method: 'DELETE' });
                 if (!response.ok) throw new Error('Failed to clear temp files');
-                setStatus('Temp files cleared', 'success');
-            } catch (err) {
-                setStatus(err.message, 'error');
-            }
+                showToast('Temp files cleared');
+            } catch (err) { setStatus(err.message, 'error'); }
         };
 
-        // Settings Modal Logic
         settingsBtn.onclick = async () => {
             try {
                 const response = await fetch('/settings');
@@ -685,9 +498,7 @@
                 ollamaApiKeyInput.value = data.OLLAMA_API_KEY || '';
                 targetScriptInput.value = data.TARGET_SCRIPT;
                 settingsModal.style.display = 'flex';
-            } catch (err) {
-                showToast('Error loading settings');
-            }
+            } catch (err) { showToast('Error loading settings'); }
         };
 
         closeModal.onclick = () => settingsModal.style.display = 'none';
@@ -696,17 +507,7 @@
         saveSettings.onclick = async () => {
             const url = ollamaUrlInput.value.trim();
             const model = ollamaModelInput.value.trim();
-            const apiKey = ollamaApiKeyInput.value.trim() || null;
-            const script = targetScriptInput.value.trim() || "Hindi (Devnagari)";
-
-            if (!url || !model) {
-                const missing = [];
-                if (!url) missing.push('Ollama API URL');
-                if (!model) missing.push('Ollama Model');
-                alert('Please fill in: ' + missing.join(', '));
-                return;
-            }
-
+            if (!url || !model) { alert('API URL and Model are required'); return; }
             try {
                 const response = await fetch('/settings', {
                     method: 'POST',
@@ -714,26 +515,22 @@
                     body: JSON.stringify({
                         OLLAMA_API_URL: url,
                         OLLAMA_MODEL: model,
-                        OLLAMA_API_KEY: apiKey,
-                        TARGET_SCRIPT: script
+                        OLLAMA_API_KEY: ollamaApiKeyInput.value.trim() || null,
+                        TARGET_SCRIPT: targetScriptInput.value.trim() || "Hindi (Devnagari)"
                     })
                 });
-
-                if (!response.ok) throw new Error('Failed to save settings');
-
+                if (!response.ok) throw new Error('Save failed');
                 showToast('Settings saved!');
                 settingsModal.style.display = 'none';
-                checkHealth(); // Refresh health badge
-                updateDynamicLabels(); // Update button and result labels
-            } catch (err) {
-                alert(err.message);
-            }
+                checkHealth();
+                updateDynamicLabels();
+            } catch (err) { alert(err.message); }
         };
 
+        // Init
         loadModels();
         checkHealth();
         updateDynamicLabels();
-    </script>
     </script>
 </body>
 </html>
