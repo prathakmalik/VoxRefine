@@ -138,7 +138,7 @@ class TranscriptionPipeline:
                     active_tasks[task_id] = process
 
             try:
-                stdout, stderr = await asyncio.wait_for(
+                _stdout, stderr = await asyncio.wait_for(
                     process.communicate(), timeout=3600
                 )
             except TimeoutError:

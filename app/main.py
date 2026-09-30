@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import shutil
@@ -10,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.config import MODEL_MAP, PROJECT_ROOT, TEMP_DIR, settings
+from app.config import MODEL_MAP, TEMP_DIR, settings
 from app.pipeline import (
     DependencyError,
     ExternalServiceError,
@@ -46,7 +45,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-import uuid
+
+@app.get("/")
+async def root():
+    """Redirect root to the landing page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/static/index.html")
+
 
 # Initialize pipeline
 pipeline = TranscriptionPipeline()
@@ -97,11 +102,11 @@ async def get_task_status(task_id: str):
     """Return the current status of a running transcription task."""
     if task_id not in active_tasks:
         return {"status": "completed", "stage": None}
-    
+
     task_data = active_tasks[task_id]
     if isinstance(task_data, dict):
         return {"status": "processing", "stage": task_data.get("status")}
-    
+
     # Fallback for old registry format
     return {"status": "processing", "stage": "unknown"}
 
@@ -133,22 +138,21 @@ async def transcribe(request: TranscribeRequest):
         return {"text": refined_text, "task_id": task_id, "duration": duration}
     except DependencyError as e:
         raise HTTPException(
-            status_code=503, detail=f"System dependency missing: {str(e)}"
+            status_code=503, detail=f"System dependency missing: {e!s}"
         )
     except ModelNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Model not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Model not found: {e!s}")
     except ExternalServiceError as e:
         raise HTTPException(
-            status_code=503, detail=f"Ollama service unavailable: {str(e)}"
+            status_code=503, detail=f"Ollama service unavailable: {e!s}"
         )
     except ProcessingError as e:
-        raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"Processing error: {e!s}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e!s}")
     finally:
         # Cleanup: Remove the task from the registry and delete temporary files
-        if task_id in active_tasks:
-            del active_tasks[task_id]
+        active_tasks.pop(task_id, None)
         pipeline.cleanup_task(task_id)
 
 
@@ -190,9 +194,9 @@ async def stop_task(task_id: str):
         logger.info(f"Successfully terminated process {pid} and removed from registry")
         return {"status": "Task terminated successfully"}
     except Exception as e:
-        logger.exception(f"Error while stopping task {task_id}: {str(e)}")
+        logger.exception(f"Error while stopping task {task_id}: {e!s}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to terminate process: {str(e)}"
+            status_code=500, detail=f"Failed to terminate process: {e!s}"
         )
 
 
@@ -200,7 +204,7 @@ async def stop_task(task_id: str):
 async def convert_native_script(request: dict):
     """Translate and convert cleaned Hinglish text to the configured native script."""
     logger.info(f"Converting text to native script: {settings.TARGET_SCRIPT}")
-    
+
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
 
@@ -212,12 +216,12 @@ async def convert_native_script(request: dict):
         return {"text": native_text}
     except ExternalServiceError as e:
         raise HTTPException(
-            status_code=503, detail=f"Ollama service unavailable: {str(e)}"
+            status_code=503, detail=f"Ollama service unavailable: {e!s}"
         )
     except ProcessingError as e:
-        raise HTTPException(status_code=422, detail=f"Processing error: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"Processing error: {e!s}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e!s}")
 
 
 class SettingsRequest(BaseModel):
@@ -247,14 +251,14 @@ async def save_settings(request: SettingsRequest):
         settings.OLLAMA_MODEL = request.OLLAMA_MODEL
         settings.OLLAMA_API_KEY = request.OLLAMA_API_KEY
         settings.TARGET_SCRIPT = request.TARGET_SCRIPT
-        
+
         # Save to disk
         settings.save()
 
         return {"status": "Settings saved successfully"}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to save settings: {str(e)}"
+            status_code=500, detail=f"Failed to save settings: {e!s}"
         )
 
 
