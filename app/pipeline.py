@@ -194,8 +194,9 @@ class TranscriptionPipeline:
         else:
             rule = (
                 f"1. ABSOLUTE REQUIREMENT: Translate the meaning of the Romanized Hinglish text into the {script_name} language and its native script. "
-                f"2. If {script_name} uses a non-Latin script, do NOT use any Latin characters (except for technical terms or brands). "
-                f"3. Maintain the original meaning, tone, and punctuation."
+                f"2. Keep technical terms, brand names, and specific English nouns in the original Latin script. "
+                f"3. For all other words, use the native script of {script_name}. "
+                f"4. Maintain the original meaning, tone, and punctuation."
             )
 
         # Provide a concrete example of the translation process to anchor the model
@@ -353,4 +354,4 @@ class TranscriptionPipeline:
         refined_text = await self.refine_text(raw_text)
 
         total_duration = time.time() - start_time
-        return refined_text, total_duration
+        return raw_text, refined_text, total_duration
