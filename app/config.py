@@ -11,6 +11,12 @@ WHISPER_CLI_PATH = str(PROJECT_ROOT / "engine" / "whisper-cli.exe")
 # Update this URL when a new whisper.cpp release is available
 WHISPER_RELEASE_BASE = "https://github.com/ggml-org/whisper.cpp/releases/download/b5130"
 
+# Local directory for intermediate files
+TEMP_DIR = str(PROJECT_ROOT / "temp")
+
+# Model directory
+MODELS_DIR = PROJECT_ROOT / "engine" / "models"
+
 # Load models and binaries from external JSON configuration
 MODELS_CONFIG_PATH = PROJECT_ROOT / "models.json"
 if MODELS_CONFIG_PATH.exists():

@@ -1,5 +1,5 @@
 {
     "OLLAMA_API_URL": "http://localhost:11434/api/generate",
     "OLLAMA_MODEL": "gemma4:31b-cloud",
-    "TARGET_SCRIPT": "Hindi (Devnagari)"
+    "TARGET_SCRIPT": "English"
 }
