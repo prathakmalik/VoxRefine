@@ -82,9 +82,14 @@
                     </div>
                     <div class="space-y-2">
                         <label class="text-sm font-medium text-slate-400 ml-1">Whisper Model</label>
-                        <select id="modelSelect" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none">
-                            <option value="">Loading models...</option>
-                        </select>
+                        <div class="relative">
+                            <select id="modelSelect" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer">
+                                <option value="">Loading models...</option>
+                            </select>
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-500">
+                                <i class="fas fa-chevron-down text-xs"></i>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
