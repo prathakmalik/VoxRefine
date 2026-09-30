@@ -7,6 +7,8 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
 - **Intelligent Refinement**: Uses LLMs (via Ollama) to fix typos, slang, and grammar in Romanized scripts.
 - **Dynamic Multi-Script Support**: Convert Romanized Hinglish into any native script configured in the settings, with options to either keep English technical terms or perform a full conversion.
 - **Process Control**: Built-in "Stop Processing" functionality to immediately terminate heavy local subprocesses (Whisper/FFmpeg) and free up GPU resources.
+- **Async Core**: Fully asynchronous processing pipeline for improved concurrency, reliability, and better resource utilization.
+- **Windows Launcher**: One-click `.bat` launcher for easy setup and startup on Windows.
 - **Modular Design**: Configurable model paths and prompts, making it adaptable for various languages.
 - **Local & Private**: Everything runs locally on your machine.
 
@@ -54,11 +56,13 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
 ## 🖥️ Usage
 
 1. **Start the server**:
-   ```bash
-   uv run python -m app.main
-   # OR:
-   python -m app.main
-   ```
+   - **Windows**: Simply double-click `run.bat` to start the server and open the UI automatically.
+   - **Other/Manual**:
+     ```bash
+     uv run python -m app.main
+     # OR:
+     python -m app.main
+     ```
    *(Optional) Run in debug mode for detailed system logs:*
    ```bash
    uv run python -m app.main --debug
@@ -74,18 +78,22 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
    - Once the cleaned text appears, use the **Settings** tab to choose your target native script, then use the conversion options to generate the final output.
 
 ## ⚙️ Configuration
-You can customize the behavior in `app/config.py` or via the **Settings** tab in the UI:
-- **Ollama Settings**: Configure the API URL and API Key. Use `http://localhost:11434/api/generate` for local access or the cloud API for hosted models.
-- **`MODEL_MAP`**: Add new models and their filenames here.
-- **`OLLAMA_MODEL`**: Change the LLM used for refinement.
-- **`TARGET_SCRIPT`**: Set the default script for conversion (e.g., "Hindi (Devnagari)", "Tamil", "Telugu").
-- **`PROMPTS`**: Adjust the grammar or translation rules.
+Settings are managed via a hierarchical system: **Environment Variables (.env)** $\rightarrow$ **User Preferences (settings.json)** $\rightarrow$ **Defaults**.
+
+You can customize the behavior via the **Settings** tab in the UI:
+- **OLLAMA_API_URL**: Use `http://localhost:11434/api/generate` for local access or the cloud API for hosted models.
+- **OLLAMA_MODEL**: Change the LLM used for refinement.
+- **OLLAMA_API_KEY**: Enter your key for cloud access (stored securely in `.env`).
+- **TARGET_SCRIPT**: Set the default script for conversion (e.g., "Hindi (Devnagari)", "Tamil", "Telugu").
+
+Advanced users can also edit `app/config.py` to adjust the `MODEL_MAP` or prompt templates.
 
 ## 📂 Project Structure
 - `app/`: Core application logic and FastAPI endpoints.
 - `engine/`: Local binaries and `.bin` model files (managed by `setup.py`).
 - `scripts/`: Automation scripts for installation and developer tools.
 - `temp/`: Local cache for intermediate processing files.
+- `run.bat`: One-click Windows launcher.
 
 ## 🛠️ Developer Tools
 - **`scripts/send_to_api.py`**: A standalone utility to test the Ollama API connection and refine prompt engineering without running the full pipeline. Run it using:
