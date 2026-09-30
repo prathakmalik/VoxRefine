@@ -106,7 +106,7 @@ async def get_task_status(task_id: str):
     return {"status": "processing", "stage": "unknown"}
 
 @app.post("/transcribe")
-def transcribe(request: TranscribeRequest):
+async def transcribe(request: TranscribeRequest):
     """Run the transcription and first-stage refinement (Hinglish)."""
     if not os.path.exists(request.path):
         raise HTTPException(
@@ -122,7 +122,7 @@ def transcribe(request: TranscribeRequest):
 
         debug_mode = logging.getLogger("VoxRefine").getEffectiveLevel() == logging.DEBUG
 
-        refined_text, duration = pipeline.run_pipeline(
+        refined_text, duration = await pipeline.run_pipeline(
             request.path,
             request.model,
             MODEL_MAP,
@@ -170,7 +170,9 @@ async def stop_task(task_id: str):
         )
 
     try:
-        process = active_tasks[task_id]
+        # Handle both the new dict format and the old direct process format
+        task_data = active_tasks[task_id]
+        process = task_data["process"] if isinstance(task_data, dict) else task_data
         pid = process.pid
         logger.info(f"Attempting to terminate process {pid} for task {task_id}")
 
@@ -194,9 +196,12 @@ async def stop_task(task_id: str):
         )
 
 
-@app.post("/convert-devnagari")
-def convert_devnagari(request: dict):
-    """Convert cleaned Hinglish text to Devnagari."""
+@app.post("/convert-native-script")
+async def convert_native_script(request: dict):
+    """Translate and convert cleaned Hinglish text to the configured native script."""
+    from app.config import TARGET_SCRIPT
+    logger.info(f"Converting text to native script: {TARGET_SCRIPT}")
+    
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
 
@@ -204,8 +209,8 @@ def convert_devnagari(request: dict):
         raise HTTPException(status_code=400, detail="No text provided for conversion")
 
     try:
-        devnagari_text = pipeline.convert_to_devnagari(text, full_conversion)
-        return {"text": devnagari_text}
+        native_text = await pipeline.convert_to_native_script(text, full_conversion)
+        return {"text": native_text}
     except ExternalServiceError as e:
         raise HTTPException(
             status_code=503, detail=f"Ollama service unavailable: {str(e)}"
@@ -219,6 +224,7 @@ def convert_devnagari(request: dict):
 class SettingsRequest(BaseModel):
     OLLAMA_API_URL: str
     OLLAMA_MODEL: str
+    OLLAMA_API_KEY: str | None = None
     TARGET_SCRIPT: str
 
 
@@ -230,6 +236,7 @@ async def get_settings():
     return {
         "OLLAMA_API_URL": config.OLLAMA_API_URL,
         "OLLAMA_MODEL": config.OLLAMA_MODEL,
+        "OLLAMA_API_KEY": config.OLLAMA_API_KEY,
         "TARGET_SCRIPT": config.TARGET_SCRIPT,
     }
 
@@ -241,6 +248,7 @@ async def save_settings(request: SettingsRequest):
         settings_data = {
             "OLLAMA_API_URL": request.OLLAMA_API_URL,
             "OLLAMA_MODEL": request.OLLAMA_MODEL,
+            "OLLAMA_API_KEY": request.OLLAMA_API_KEY,
             "TARGET_SCRIPT": request.TARGET_SCRIPT,
         }
         with open(PROJECT_ROOT / "settings.json", "w") as f:
@@ -251,7 +259,10 @@ async def save_settings(request: SettingsRequest):
 
         config.OLLAMA_API_URL = request.OLLAMA_API_URL
         config.OLLAMA_MODEL = request.OLLAMA_MODEL
+        config.OLLAMA_API_KEY = request.OLLAMA_API_KEY
         config.TARGET_SCRIPT = request.TARGET_SCRIPT
+
+        return {"status": "Settings saved successfully"}
 
         return {"status": "Settings saved successfully"}
     except Exception as e:

@@ -43,7 +43,7 @@ def check_gpu():
     try:
         subprocess.run(["nvidia-smi"], capture_output=True, check=True)
         return True
-    except subprocess.CalledProcessError, FileNotFoundError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
 
@@ -186,7 +186,7 @@ def setup_engine():
         try:
             indices = [int(x.strip()) for x in selection.split(",")]
             to_download = [available_models[i] for i in indices]
-        except ValueError, IndexError:
+        except (ValueError, IndexError):
             logger.error("Invalid selection. Skipping model downloads.")
 
     for model_name in to_download:

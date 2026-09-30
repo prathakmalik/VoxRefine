@@ -1,8 +1,9 @@
+import asyncio
 import json
 import logging
 import os
-import subprocess
-import time
+import shutil
+import urllib.error
 import urllib.request
 
 from app.config import (
@@ -56,7 +57,7 @@ class TranscriptionPipeline:
         if not os.path.exists(TEMP_DIR):
             os.makedirs(TEMP_DIR)
 
-    def preprocess_audio(
+    async def preprocess_audio(
         self, source_path, task_id=None, active_tasks=None, debug=False
     ):
         """
@@ -64,12 +65,10 @@ class TranscriptionPipeline:
         """
         if debug:
             logger.debug(f"Starting preprocess_audio for task {task_id}")
-        
-        # Use task_id to create a unique filename and prevent collisions
+
         filename = f"processed_{task_id}.wav" if task_id else "processed.wav"
         target_wav = os.path.join(TEMP_DIR, filename)
-        
-        # Overwrite existing file
+
         cmd = [
             "ffmpeg",
             "-y",
@@ -87,9 +86,9 @@ class TranscriptionPipeline:
         ]
 
         try:
-            # Use Popen instead of run to allow termination
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            # Create async subprocess
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
             if task_id and active_tasks is not None:
@@ -98,29 +97,33 @@ class TranscriptionPipeline:
                 else:
                     active_tasks[task_id] = process
 
-            # Call communicate() directly to avoid pipe buffer deadlocks.
-            # This blocks the thread until the process completes, but FastAPI
-            # runs this in a separate thread, so it's safe.
+            # Wait for process to complete with timeout
             try:
-                stdout, stderr = process.communicate(timeout=3600)
-            except subprocess.TimeoutExpired:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=3600
+                )
+            except asyncio.TimeoutError:
                 process.kill()
-                stdout, stderr = process.communicate()
+                await process.wait()
                 raise ProcessingError("FFmpeg processing timed out after 1 hour")
 
             if process.returncode != 0:
-                raise ProcessingError(f"FFmpeg processing failed: {stderr}")
+                raise ProcessingError(
+                    f"FFmpeg processing failed: {stderr.decode() if stderr else 'Unknown error'}"
+                )
 
         except FileNotFoundError:
             raise DependencyError(
                 "FFmpeg not found. Please install FFmpeg and add it to your system PATH."
             )
         except Exception as e:
+            if isinstance(e, ProcessingError):
+                raise e
             raise ProcessingError(f"Unexpected FFmpeg error: {str(e)}")
 
         return target_wav
 
-    def transcribe(
+    async def transcribe(
         self, wav_path, model_path, task_id=None, active_tasks=None, debug=False
     ):
         """
@@ -132,14 +135,12 @@ class TranscriptionPipeline:
             raise DependencyError(
                 f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py."
             )
-        
-        # whisper-cli.exe -m [model] -f [wav] -otxt
+
         cmd = [WHISPER_CLI_PATH, "-m", model_path, "-f", wav_path, "-otxt"]
 
         try:
-            # Use Popen instead of run to allow termination
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
             if task_id and active_tasks is not None:
@@ -148,21 +149,24 @@ class TranscriptionPipeline:
                 else:
                     active_tasks[task_id] = process
 
-            # Call communicate() directly to avoid pipe buffer deadlocks.
             try:
-                stdout, stderr = process.communicate(timeout=3600)
-            except subprocess.TimeoutExpired:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=3600
+                )
+            except asyncio.TimeoutError:
                 process.kill()
-                stdout, stderr = process.communicate()
+                await process.wait()
                 raise ProcessingError("Whisper transcription timed out after 1 hour")
 
             if process.returncode != 0:
-                raise ProcessingError(f"Whisper transcription failed: {stderr}")
+                raise ProcessingError(
+                    f"Whisper transcription failed: {stderr.decode() if stderr else 'Unknown error'}"
+                )
         except Exception as e:
+            if isinstance(e, ProcessingError):
+                raise e
             raise ProcessingError(f"Unexpected error during transcription: {str(e)}")
 
-        # Whisper-cli typically creates a file with the same base name as the input + .txt
-        # If input is processed.wav, output is usually processed.wav.txt
         txt_path = wav_path + ".txt"
         if not os.path.exists(txt_path):
             raise ProcessingError(f"Transcription output file not found: {txt_path}")
@@ -172,62 +176,109 @@ class TranscriptionPipeline:
 
         return raw_text
 
-    def refine_text(self, raw_text):
+    async def refine_text(self, raw_text):
         """
         Always first clean the text to fix typos/slang/grammar.
         """
-        return self._call_ollama(HINGLISH_PROMPT_TEMPLATE.format(text=raw_text))
+        # Since urllib is synchronous, we wrap the call in a thread to keep the loop free
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._call_ollama, HINGLISH_PROMPT_TEMPLATE.format(text=raw_text)
+        )
 
-    def convert_to_devnagari(self, cleaned_text, full_conversion=False):
+    async def convert_to_native_script(self, cleaned_text, full_conversion=False):
         """
-        Convert cleaned Romanized Hinglish to the configured native script.
+        Translate and convert cleaned Romanized Hinglish text to the configured native script.
         """
-        # Use the dynamic TARGET_SCRIPT from config
         script_name = TARGET_SCRIPT if TARGET_SCRIPT else "Hindi (Devnagari)"
 
-        rule = (
-            f"1. ABSOLUTE REQUIREMENT: Convert ALL words (including English) into the {script_name} script. Do NOT use Latin or Roman characters under any circumstances."
-            if full_conversion
-            else f"1. ABSOLUTE REQUIREMENT: Convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
-        )
+        # Professional role based on the target language
+        system_role = f"You are a professional translator specializing in translating Romanized Hinglish into {script_name}. Your goal is to provide a perfect translation that maintains the original meaning and tone."
 
-        # Few-shot examples to anchor the model to the correct script
+        # Determine the rules based on the conversion type
+        if full_conversion:
+            rule = (
+                f"1. ABSOLUTE REQUIREMENT: Translate the entire text into formal {script_name}. "
+                f"2. Use the native script of {script_name}. "
+                f"3. Ensure no Hinglish or Romanized Hindi terms remain. "
+                f"4. If the native script is NOT Latin, do NOT use any Latin characters."
+            )
+        else:
+            rule = (
+                f"1. ABSOLUTE REQUIREMENT: Translate the meaning of the Romanized Hinglish text into the {script_name} language and its native script. "
+                f"2. If {script_name} uses a non-Latin script, do NOT use any Latin characters (except for technical terms or brands). "
+                f"3. Maintain the original meaning, tone, and punctuation."
+            )
+
+        # Provide a concrete example of the translation process to anchor the model
+        # We use a simple example and tell the model to apply the SAME LOGIC to the target language
         examples = (
-            f"Example 1 (Partial):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में laptop है' (If {script_name} is Hindi)\n\n"
-            f"Example 2 (Full):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में लैपटॉप है' (If {script_name} is Hindi)\n\n"
-            "Note: Always match the exact script requested in the TARGET_SCRIPT field."
+            "Translation Example (Hinglish to English):\n"
+            "Input: 'Mere ghar mein laptop hai'\n"
+            "Output: 'I have a laptop in my house.'\n\n"
+            f"Now, apply this same translation logic to output the text in {script_name}."
         )
 
-        # Reinforced prompt to fight LLM bias
+        # Reinforced prompt to fight LLM bias and prevent language drift
         prompt = (
-            f"You are a highly skilled linguist specializing in the {script_name} script. "
-            f"Your task is to translate the following Romanized Hinglish text into the {script_name} script.\n\n"
+            f"{system_role}\n\n"
+            f"TASK: Translate the following Romanized Hinglish text into {script_name}.\n\n"
             f"CRITICAL CONSTRAINTS:\n{rule}\n"
-            "3. Maintain the original meaning and punctuation.\n"
-            f"4. OUTPUT ONLY the converted text in {script_name} script. Do not include any English explanations, introductory text, or comments.\n"
-            f"5. If you output any text in a script other than {script_name}, the task is failed.\n\n"
-            f"REFERENCE EXAMPLES:\n{examples}\n\n"
-            f"Text to convert:\n{cleaned_text}"
+            f"5. OUTPUT ONLY the translated text in {script_name}. Do not include any explanations, introductory text, or comments.\n"
+            f"6. If you output any text in a language other than {script_name}, the task is failed.\n\n"
+            f"REFERENCE EXAMPLE:\n{examples}\n\n"
+            f"Text to translate:\n{cleaned_text}"
         )
-        return self._call_ollama(prompt)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._call_ollama, prompt)
 
     def _call_ollama(self, prompt):
         """
         Internal helper to handle the actual API request to Ollama.
+        Supports both /api/generate (local/legacy) and /api/chat (cloud/API key).
         """
-        body = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
+        from app.config import OLLAMA_API_URL, OLLAMA_API_KEY
+        
+        url = OLLAMA_API_URL
+        is_chat_endpoint = "/api/chat" in url
+        
+        if is_chat_endpoint:
+            # Cloud/API key format: requires 'messages' array
+            body = {
+                "model": OLLAMA_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            }
+        else:
+            # Local/Generate format: requires 'prompt' string
+            body = {
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+            }
+
+        headers = {"Content-Type": "application/json"}
+        if OLLAMA_API_KEY:
+            headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
 
         req = urllib.request.Request(
-            OLLAMA_API_URL,
+            url,
             data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
 
         try:
             with urllib.request.urlopen(req, timeout=15) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
-                return res_data.get("response", "")
+                
+                if is_chat_endpoint:
+                    # /api/chat returns a 'message' object containing 'content'
+                    return res_data.get("message", {}).get("content", "")
+                else:
+                    # /api/generate returns 'response' string
+                    return res_data.get("response", "")
         except urllib.error.URLError as e:
             raise ExternalServiceError(
                 f"Unable to connect to Ollama server: {e.reason}"
@@ -254,7 +305,7 @@ class TranscriptionPipeline:
         except Exception as e:
             logger.error(f"Error cleaning up task {task_id}: {e}")
 
-    def run_pipeline(
+    async def run_pipeline(
         self,
         source_path,
         model_key,
@@ -267,6 +318,7 @@ class TranscriptionPipeline:
         Coordinate the first part: Preprocess -> Transcribe -> Refine (Hinglish).
         """
         import time
+
         start_time = time.time()
 
         if debug:
@@ -274,13 +326,11 @@ class TranscriptionPipeline:
         if model_key not in model_map:
             raise ValueError(f"Invalid model key: {model_key}")
 
-        # Handle the new MODEL_MAP structure where value is a dict with 'file' and 'url'
         model_info = model_map[model_key]
         model_filename = (
             model_info["file"] if isinstance(model_info, dict) else model_info
         )
 
-        # Ensure we have the absolute path to the model file
         from app.config import MODELS_DIR
 
         model_path = (
@@ -295,27 +345,26 @@ class TranscriptionPipeline:
                 f"Please run 'uv run python scripts/setup.py' to download the required models."
             )
 
-        # 1. Preprocess
         if active_tasks is not None:
             active_tasks[task_id] = {"status": "ffmpeg", "start_time": start_time}
-        
-        wav_path = self.preprocess_audio(
+
+        wav_path = await self.preprocess_audio(
             source_path, task_id, active_tasks, debug=debug
         )
 
-        # 2. Transcribe
         if active_tasks is not None:
             active_tasks[task_id]["status"] = "whisper"
-        
-        raw_text = self.transcribe(
+
+        raw_text = await self.transcribe(
             wav_path, model_path, task_id, active_tasks, debug=debug
         )
 
-        # 3. Refine
         if active_tasks is not None:
             active_tasks[task_id]["status"] = "ollama"
-        
-        refined_text = self.refine_text(raw_text)
 
+        refined_text = await self.refine_text(raw_text)
+
+        total_duration = time.time() - start_time
+        return refined_text, total_duration
         total_duration = time.time() - start_time
         return refined_text, total_duration
