@@ -422,8 +422,8 @@
                 }
 
                 const data = await response.json();
-                resultText.value = data.text; // This is the refined Hinglish from the current pipeline
-                refinedText.value = data.text; 
+                resultText.value = data.raw_text; 
+                refinedText.value = data.refined_text; 
                 
                 resultsSection.classList.remove('opacity-40', 'pointer-events-none');
                 updateStep('ollama', 'complete');

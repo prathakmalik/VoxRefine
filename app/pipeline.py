@@ -353,4 +353,4 @@ class TranscriptionPipeline:
         refined_text = await self.refine_text(raw_text)
 
         total_duration = time.time() - start_time
-        return refined_text, total_duration
+        return raw_text, refined_text, total_duration

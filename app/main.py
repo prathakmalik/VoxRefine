@@ -127,7 +127,7 @@ async def transcribe(request: TranscribeRequest):
 
         debug_mode = logging.getLogger("VoxRefine").getEffectiveLevel() == logging.DEBUG
 
-        refined_text, duration = await pipeline.run_pipeline(
+        raw_text, refined_text, duration = await pipeline.run_pipeline(
             request.path,
             request.model,
             MODEL_MAP,
@@ -135,7 +135,7 @@ async def transcribe(request: TranscribeRequest):
             active_tasks=active_tasks,
             debug=debug_mode,
         )
-        return {"text": refined_text, "task_id": task_id, "duration": duration}
+        return {"raw_text": raw_text, "refined_text": refined_text, "task_id": task_id, "duration": duration}
     except DependencyError as e:
         raise HTTPException(
             status_code=503, detail=f"System dependency missing: {e!s}"
