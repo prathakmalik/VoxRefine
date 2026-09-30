@@ -15,21 +15,15 @@ if %ERRORLEVEL% equ 0 (
     set START_CMD=python -m app.main
 )
 
-echo Starting server in background...
-start /b %START_CMD%
+echo Starting server...
+echo.
 
-echo Waiting for server to initialize...
-timeout /t 5 /nobreak > nul
-
-echo Launching browser...
-start http://localhost:8000/static/index.html
+:: Run the server directly in this window.
+:: This allows Ctrl+C to be captured by the Python process and uvicorn.
+%START_CMD%
 
 echo.
 echo ========================================
-echo   Server is running. 
-echo   Press Ctrl+C to stop the server.
+echo       Server has stopped.
 echo ========================================
-echo.
-
-:: Keep the window open and the shell active to show server logs
-cmd /k
+pause
