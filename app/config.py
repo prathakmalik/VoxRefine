@@ -1,5 +1,8 @@
 import json
 from pathlib import Path
+from typing import Optional
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root is the directory containing the 'app' folder
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -8,7 +11,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WHISPER_CLI_PATH = str(PROJECT_ROOT / "engine" / "whisper-cli.exe")
 
 # Binary Download Configuration
-# Update this URL when a new whisper.cpp release is available
 WHISPER_RELEASE_BASE = "https://github.com/ggml-org/whisper.cpp/releases/download/b5130"
 
 # Local directory for intermediate files
@@ -25,37 +27,65 @@ if MODELS_CONFIG_PATH.exists():
         BINARIES_MAP = config_data.get("binaries", {})
         MODEL_MAP = config_data.get("models", {})
 else:
-    # Fallback defaults if models.json is missing
     BINARIES_MAP = {
         "cuda": {"file": "whisper-cublas-12.4.0-bin-x64.zip", "sha256": ""},
         "cpu": {"file": "whisper-bin-x64.zip", "sha256": ""},
     }
     MODEL_MAP = {}
 
-# Default Ollama API configuration
-# You can configure these directly here or via the application UI (which saves to settings.json)
-# At least one of the following must be configured correctly for the app to work:
-# 1. Local: OLLAMA_API_URL points to your local instance (default: http://localhost:11434/api/generate)
-# 2. Cloud: OLLAMA_API_URL points to the cloud API (e.g., https://ollama.com/api/chat) AND OLLAMA_API_KEY is provided.
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "gemma4:31b-cloud"
-OLLAMA_API_KEY = None
-DEFAULT_TARGET_SCRIPT = "Hindi (Devnagari)"
 
-# Load overrides from settings.json if it exists
-SETTINGS_FILE = PROJECT_ROOT / "settings.json"
-settings = {}
-if SETTINGS_FILE.exists():
-    try:
-        with open(SETTINGS_FILE, "r") as f:
-            settings = json.load(f)
-            OLLAMA_API_URL = settings.get("OLLAMA_API_URL", OLLAMA_API_URL)
-            OLLAMA_MODEL = settings.get("OLLAMA_MODEL", OLLAMA_MODEL)
-            OLLAMA_API_KEY = settings.get("OLLAMA_API_KEY", OLLAMA_API_KEY)
-    except Exception as e:  # noqa: BLE001
-        print(f"Warning: Failed to load settings.json: {e}")
+class Settings(BaseSettings):
+    """Application settings managed via environment variables and settings.json."""
+    # These will be loaded from .env or environment variables first
+    OLLAMA_API_URL: str = "http://localhost:11434/api/generate"
+    OLLAMA_MODEL: str = "gemma4:31b-cloud"
+    OLLAMA_API_KEY: Optional[str] = None
+    TARGET_SCRIPT: str = "Hindi (Devnagari)"
 
-TARGET_SCRIPT = settings.get("TARGET_SCRIPT", DEFAULT_TARGET_SCRIPT)
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+    def save(self):
+        """Save current settings to settings.json for UI persistence."""
+        settings_path = PROJECT_ROOT / "settings.json"
+        with open(settings_path, "w") as f:
+            # We only save preference-like settings to JSON, 
+            # secrets should stay in .env
+            data = self.model_dump()
+            # Optional: you could remove OLLAMA_API_KEY from here if you want 
+            # it strictly in .env, but keeping it allows the UI to show/edit it.
+            json.dump(data, f, indent=4)
+
+    @classmethod
+    def load_from_json(cls):
+        """
+        Load settings. 
+        Priority: Environment Variables (.env) > settings.json > Defaults.
+        """
+        # 1. Start with Pydantic's default loading (Env vars and .env file)
+        settings = cls()
+        
+        # 2. Override with settings.json if it exists (UI preferences take priority)
+        settings_path = PROJECT_ROOT / "settings.json"
+        if settings_path.exists():
+            try:
+                with open(settings_path, "r") as f:
+                    data = json.load(f)
+                    # Update the settings object with values from JSON
+                    for key, value in data.items():
+                        if hasattr(settings, key):
+                            setattr(settings, key, value)
+            except Exception as e:
+                print(f"Warning: Failed to load settings.json: {e}")
+        
+        return settings
+
+
+# Global settings instance
+settings = Settings.load_from_json()
 
 # Refinement Prompts
 HINGLISH_PROMPT_TEMPLATE = (
