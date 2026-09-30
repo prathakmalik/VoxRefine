@@ -280,10 +280,10 @@
                 <label id="nativeScriptOptionsLabel" style="font-weight: bold; margin-bottom: 10px; display: block;">Devnagari Options</label>
                 <div style="display: flex; gap: 20px; margin-bottom: 15px;">
                     <label style="font-weight: normal; cursor: pointer;">
-                        <input type="radio" name="convType" value="partial" checked> Keep English as English
+                        <input type="radio" name="convType" value="partial"> Keep English as English
                     </label>
                     <label style="font-weight: normal; cursor: pointer;">
-                        <input type="radio" name="convType" value="full" id="fullConvLabel"> Full Devnagari Conversion
+                        <input type="radio" name="convType" value="full" id="fullConvLabel" checked> Full ${script} Conversion
                     </label>
                 </div>
                 <button id="convertBtn" class="btn-primary" style="width: auto; padding: 8px 20px;">Convert to Native Script ➔</button>
@@ -334,6 +334,10 @@
                 <input type="text" id="ollamaModel" placeholder="gemma4:31b-cloud">
             </div>
             <div class="form-group">
+                <label for="ollamaApiKey">Ollama API Key (Optional)</label>
+                <input type="password" id="ollamaApiKey" placeholder="Enter your API key">
+            </div>
+            <div class="form-group">
                 <label for="targetScript">Target Native Script</label>
                 <input type="text" id="targetScript" placeholder="Hindi (Devnagari)">
             </div>
@@ -371,6 +375,7 @@
         const saveSettings = document.getElementById('saveSettings');
         const ollamaUrlInput = document.getElementById('ollamaUrl');
         const ollamaModelInput = document.getElementById('ollamaModel');
+        const ollamaApiKeyInput = document.getElementById('ollamaApiKey');
         const targetScriptInput = document.getElementById('targetScript');
 
         function updateDynamicLabels() {
@@ -395,7 +400,7 @@
                     const fullConvLabel = document.getElementById('fullConvLabel');
                     if (fullConvLabel) {
                         const labelElem = fullConvLabel.parentElement;
-                        labelElem.innerHTML = `<input type="radio" name="convType" value="full" id="fullConvLabel"> Full ${script} Conversion`;
+                        labelElem.innerHTML = `<input type="radio" name="convType" value="full" id="fullConvLabel" checked> Full ${script} Conversion`;
                     }
                 })
                 .catch(err => console.error('Error updating labels:', err));
@@ -431,6 +436,13 @@
                 } else {
                     healthBadge.textContent = 'Issues Found';
                     healthBadge.className = 'health-badge health-unhealthy';
+                    
+                    // Notify the user exactly what is missing
+                    if (data.missing && data.missing.length > 0) {
+                        data.missing.forEach(item => {
+                            showToast(`Dependency missing: ${item}. Please check setup.py`);
+                        });
+                    }
                 }
             } catch (err) {
                 healthBadge.textContent = 'Unknown';
@@ -670,6 +682,7 @@
                 const data = await response.json();
                 ollamaUrlInput.value = data.OLLAMA_API_URL;
                 ollamaModelInput.value = data.OLLAMA_MODEL;
+                ollamaApiKeyInput.value = data.OLLAMA_API_KEY || '';
                 targetScriptInput.value = data.TARGET_SCRIPT;
                 settingsModal.style.display = 'flex';
             } catch (err) {
@@ -683,6 +696,7 @@
         saveSettings.onclick = async () => {
             const url = ollamaUrlInput.value.trim();
             const model = ollamaModelInput.value.trim();
+            const apiKey = ollamaApiKeyInput.value.trim() || null;
             const script = targetScriptInput.value.trim() || "Hindi (Devnagari)";
 
             if (!url || !model) {
@@ -700,6 +714,7 @@
                     body: JSON.stringify({
                         OLLAMA_API_URL: url,
                         OLLAMA_MODEL: model,
+                        OLLAMA_API_KEY: apiKey,
                         TARGET_SCRIPT: script
                     })
                 });
