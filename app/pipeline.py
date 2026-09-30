@@ -8,11 +8,9 @@ import urllib.request
 
 from app.config import (
     HINGLISH_PROMPT_TEMPLATE,
-    OLLAMA_API_URL,
-    OLLAMA_MODEL,
-    TARGET_SCRIPT,
     TEMP_DIR,
     WHISPER_CLI_PATH,
+    settings,
 )
 
 # Configure logging
@@ -25,31 +23,21 @@ logger = logging.getLogger("VoxRefine")
 class VoxRefineError(Exception):
     """Base exception for VoxRefine pipeline errors."""
 
-    pass
-
 
 class DependencyError(VoxRefineError):
     """Raised when a system dependency (ffmpeg, binaries) is missing."""
-
-    pass
 
 
 class ModelNotFoundError(VoxRefineError):
     """Raised when a whisper model file is not found."""
 
-    pass
-
 
 class ExternalServiceError(VoxRefineError):
     """Raised when Ollama API is unavailable or returns an error."""
 
-    pass
-
 
 class ProcessingError(VoxRefineError):
     """Raised when transcription or refinement fails."""
-
-    pass
 
 
 class TranscriptionPipeline:
@@ -99,10 +87,10 @@ class TranscriptionPipeline:
 
             # Wait for process to complete with timeout
             try:
-                stdout, stderr = await asyncio.wait_for(
+                _stdout, stderr = await asyncio.wait_for(
                     process.communicate(), timeout=3600
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 process.kill()
                 await process.wait()
                 raise ProcessingError("FFmpeg processing timed out after 1 hour")
@@ -118,8 +106,8 @@ class TranscriptionPipeline:
             )
         except Exception as e:
             if isinstance(e, ProcessingError):
-                raise e
-            raise ProcessingError(f"Unexpected FFmpeg error: {str(e)}")
+                raise
+            raise ProcessingError(f"Unexpected FFmpeg error: {e!s}")
 
         return target_wav
 
@@ -153,7 +141,7 @@ class TranscriptionPipeline:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(), timeout=3600
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 process.kill()
                 await process.wait()
                 raise ProcessingError("Whisper transcription timed out after 1 hour")
@@ -165,7 +153,7 @@ class TranscriptionPipeline:
         except Exception as e:
             if isinstance(e, ProcessingError):
                 raise e
-            raise ProcessingError(f"Unexpected error during transcription: {str(e)}")
+            raise ProcessingError(f"Unexpected error during transcription: {e!s}")
 
         txt_path = wav_path + ".txt"
         if not os.path.exists(txt_path):
@@ -190,7 +178,7 @@ class TranscriptionPipeline:
         """
         Translate and convert cleaned Romanized Hinglish text to the configured native script.
         """
-        script_name = TARGET_SCRIPT if TARGET_SCRIPT else "Hindi (Devnagari)"
+        script_name = settings.TARGET_SCRIPT if settings.TARGET_SCRIPT else "Hindi (Devnagari)"
 
         # Professional role based on the target language
         system_role = f"You are a professional translator specializing in translating Romanized Hinglish into {script_name}. Your goal is to provide a perfect translation that maintains the original meaning and tone."
@@ -211,7 +199,6 @@ class TranscriptionPipeline:
             )
 
         # Provide a concrete example of the translation process to anchor the model
-        # We use a simple example and tell the model to apply the SAME LOGIC to the target language
         examples = (
             "Translation Example (Hinglish to English):\n"
             "Input: 'Mere ghar mein laptop hai'\n"
@@ -238,29 +225,31 @@ class TranscriptionPipeline:
         Internal helper to handle the actual API request to Ollama.
         Supports both /api/generate (local/legacy) and /api/chat (cloud/API key).
         """
-        from app.config import OLLAMA_API_URL, OLLAMA_API_KEY
-        
-        url = OLLAMA_API_URL
+        url = settings.OLLAMA_API_URL
         is_chat_endpoint = "/api/chat" in url
-        
+
+        # Check if the API key is provided and not a placeholder
+        api_key = settings.OLLAMA_API_KEY
+        has_valid_key = api_key and "your_api_key_here" not in api_key.lower()
+
         if is_chat_endpoint:
             # Cloud/API key format: requires 'messages' array
             body = {
-                "model": OLLAMA_MODEL,
+                "model": settings.OLLAMA_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
             }
         else:
             # Local/Generate format: requires 'prompt' string
             body = {
-                "model": OLLAMA_MODEL,
+                "model": settings.OLLAMA_MODEL,
                 "prompt": prompt,
                 "stream": False,
             }
 
         headers = {"Content-Type": "application/json"}
-        if OLLAMA_API_KEY:
-            headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
+        if has_valid_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
         req = urllib.request.Request(
             url,
@@ -272,7 +261,7 @@ class TranscriptionPipeline:
         try:
             with urllib.request.urlopen(req, timeout=15) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
-                
+
                 if is_chat_endpoint:
                     # /api/chat returns a 'message' object containing 'content'
                     return res_data.get("message", {}).get("content", "")
@@ -284,7 +273,7 @@ class TranscriptionPipeline:
                 f"Unable to connect to Ollama server: {e.reason}"
             )
         except Exception as e:
-            raise ExternalServiceError(f"Ollama API error: {str(e)}")
+            raise ExternalServiceError(f"Ollama API error: {e!s}")
 
     def cleanup_task(self, task_id):
         """
@@ -318,7 +307,6 @@ class TranscriptionPipeline:
         Coordinate the first part: Preprocess -> Transcribe -> Refine (Hinglish).
         """
         import time
-
         start_time = time.time()
 
         if debug:
@@ -364,7 +352,5 @@ class TranscriptionPipeline:
 
         refined_text = await self.refine_text(raw_text)
 
-        total_duration = time.time() - start_time
-        return refined_text, total_duration
         total_duration = time.time() - start_time
         return refined_text, total_duration
