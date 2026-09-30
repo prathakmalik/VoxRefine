@@ -13,8 +13,12 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
 ## 🛠️ Prerequisites
 - **Python 3.10+**
 - **uv (Optional)**: Fast Python package manager (`pip install uv`). Recommended for faster dependency synchronization.
-- **Ollama**: For AI refinement. Install from [ollama.com](https://ollama.com). This project is configured to use a cloud-hosted model (`gemma4:31b-cloud`), so no local pull is required.
-- **FFmpeg**: Must be installed and available in your system PATH.
+- **Ollama**: For AI refinement. Install from [ollama.com](https://ollama.com).
+  - **Local Access**: Works by default using your local Ollama instance.
+  - **Cloud Access**: Can be configured via the UI using an Ollama API Key to access cloud-hosted models.
+  This project is configured to use a cloud-hosted model (`gemma4:31b-cloud`), so no local pull is required.
+- **FFmpeg**: Must be installed and available in your system PATH. 
+  - For Windows, download a static build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) or [BtbN](https://github.com/BtbN/FFmpeg-Builds/releases), extract it, and add the `bin` folder to your system Environment Variables.
 
 ## 📦 Installation
 
@@ -64,6 +68,7 @@ VoxRefine is a professional audio-to-text pipeline designed to handle the comple
 
 ## ⚙️ Configuration
 You can customize the behavior in `app/config.py` or via the **Settings** tab in the UI:
+- **Ollama Settings**: Configure the API URL and API Key. Use `http://localhost:11434/api/generate` for local access or the cloud API for hosted models.
 - **`MODEL_MAP`**: Add new models and their filenames here.
 - **`OLLAMA_MODEL`**: Change the LLM used for refinement.
 - **`TARGET_SCRIPT`**: Set the default script for conversion (e.g., "Hindi (Devnagari)", "Tamil", "Telugu").
