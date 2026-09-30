@@ -236,20 +236,49 @@ class TranscriptionPipeline:
     def _call_ollama(self, prompt):
         """
         Internal helper to handle the actual API request to Ollama.
+        Supports both /api/generate (local/legacy) and /api/chat (cloud/API key).
         """
-        body = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
+        from app.config import OLLAMA_API_URL, OLLAMA_API_KEY
+        
+        url = OLLAMA_API_URL
+        is_chat_endpoint = "/api/chat" in url
+        
+        if is_chat_endpoint:
+            # Cloud/API key format: requires 'messages' array
+            body = {
+                "model": OLLAMA_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            }
+        else:
+            # Local/Generate format: requires 'prompt' string
+            body = {
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+            }
+
+        headers = {"Content-Type": "application/json"}
+        if OLLAMA_API_KEY:
+            headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
 
         req = urllib.request.Request(
-            OLLAMA_API_URL,
+            url,
             data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
 
         try:
             with urllib.request.urlopen(req, timeout=15) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
-                return res_data.get("response", "")
+                
+                if is_chat_endpoint:
+                    # /api/chat returns a 'message' object containing 'content'
+                    return res_data.get("message", {}).get("content", "")
+                else:
+                    # /api/generate returns 'response' string
+                    return res_data.get("response", "")
         except urllib.error.URLError as e:
             raise ExternalServiceError(
                 f"Unable to connect to Ollama server: {e.reason}"

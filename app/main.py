@@ -224,6 +224,7 @@ async def convert_native_script(request: dict):
 class SettingsRequest(BaseModel):
     OLLAMA_API_URL: str
     OLLAMA_MODEL: str
+    OLLAMA_API_KEY: str | None = None
     TARGET_SCRIPT: str
 
 
@@ -235,6 +236,7 @@ async def get_settings():
     return {
         "OLLAMA_API_URL": config.OLLAMA_API_URL,
         "OLLAMA_MODEL": config.OLLAMA_MODEL,
+        "OLLAMA_API_KEY": config.OLLAMA_API_KEY,
         "TARGET_SCRIPT": config.TARGET_SCRIPT,
     }
 
@@ -246,6 +248,7 @@ async def save_settings(request: SettingsRequest):
         settings_data = {
             "OLLAMA_API_URL": request.OLLAMA_API_URL,
             "OLLAMA_MODEL": request.OLLAMA_MODEL,
+            "OLLAMA_API_KEY": request.OLLAMA_API_KEY,
             "TARGET_SCRIPT": request.TARGET_SCRIPT,
         }
         with open(PROJECT_ROOT / "settings.json", "w") as f:
@@ -256,7 +259,10 @@ async def save_settings(request: SettingsRequest):
 
         config.OLLAMA_API_URL = request.OLLAMA_API_URL
         config.OLLAMA_MODEL = request.OLLAMA_MODEL
+        config.OLLAMA_API_KEY = request.OLLAMA_API_KEY
         config.TARGET_SCRIPT = request.TARGET_SCRIPT
+
+        return {"status": "Settings saved successfully"}
 
         return {"status": "Settings saved successfully"}
     except Exception as e:
