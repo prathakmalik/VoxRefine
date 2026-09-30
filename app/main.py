@@ -199,6 +199,9 @@ async def stop_task(task_id: str):
 @app.post("/convert-native-script")
 async def convert_native_script(request: dict):
     """Translate and convert cleaned Hinglish text to the configured native script."""
+    from app.config import TARGET_SCRIPT
+    logger.info(f"Converting text to native script: {TARGET_SCRIPT}")
+    
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
 

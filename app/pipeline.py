@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import shutil
-import time
+import urllib.error
 import urllib.request
 
 from app.config import (
@@ -21,25 +21,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger("VoxRefine")
 
+
 class VoxRefineError(Exception):
     """Base exception for VoxRefine pipeline errors."""
+
     pass
+
 
 class DependencyError(VoxRefineError):
     """Raised when a system dependency (ffmpeg, binaries) is missing."""
+
     pass
+
 
 class ModelNotFoundError(VoxRefineError):
     """Raised when a whisper model file is not found."""
+
     pass
+
 
 class ExternalServiceError(VoxRefineError):
     """Raised when Ollama API is unavailable or returns an error."""
+
     pass
+
 
 class ProcessingError(VoxRefineError):
     """Raised when transcription or refinement fails."""
+
     pass
+
 
 class TranscriptionPipeline:
     def __init__(self):
@@ -54,10 +65,10 @@ class TranscriptionPipeline:
         """
         if debug:
             logger.debug(f"Starting preprocess_audio for task {task_id}")
-        
+
         filename = f"processed_{task_id}.wav" if task_id else "processed.wav"
         target_wav = os.path.join(TEMP_DIR, filename)
-        
+
         cmd = [
             "ffmpeg",
             "-y",
@@ -77,9 +88,7 @@ class TranscriptionPipeline:
         try:
             # Create async subprocess
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
             if task_id and active_tasks is not None:
@@ -90,21 +99,26 @@ class TranscriptionPipeline:
 
             # Wait for process to complete with timeout
             try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=3600)
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=3600
+                )
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
                 raise ProcessingError("FFmpeg processing timed out after 1 hour")
 
             if process.returncode != 0:
-                raise ProcessingError(f"FFmpeg processing failed: {stderr.decode() if stderr else 'Unknown error'}")
+                raise ProcessingError(
+                    f"FFmpeg processing failed: {stderr.decode() if stderr else 'Unknown error'}"
+                )
 
         except FileNotFoundError:
             raise DependencyError(
                 "FFmpeg not found. Please install FFmpeg and add it to your system PATH."
             )
         except Exception as e:
-            if isinstance(e, ProcessingError): raise e
+            if isinstance(e, ProcessingError):
+                raise e
             raise ProcessingError(f"Unexpected FFmpeg error: {str(e)}")
 
         return target_wav
@@ -121,14 +135,12 @@ class TranscriptionPipeline:
             raise DependencyError(
                 f"Whisper binary not found at {WHISPER_CLI_PATH}. Please run setup.py."
             )
-        
+
         cmd = [WHISPER_CLI_PATH, "-m", model_path, "-f", wav_path, "-otxt"]
 
         try:
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
             if task_id and active_tasks is not None:
@@ -138,16 +150,21 @@ class TranscriptionPipeline:
                     active_tasks[task_id] = process
 
             try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=3600)
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=3600
+                )
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
                 raise ProcessingError("Whisper transcription timed out after 1 hour")
 
             if process.returncode != 0:
-                raise ProcessingError(f"Whisper transcription failed: {stderr.decode() if stderr else 'Unknown error'}")
+                raise ProcessingError(
+                    f"Whisper transcription failed: {stderr.decode() if stderr else 'Unknown error'}"
+                )
         except Exception as e:
-            if isinstance(e, ProcessingError): raise e
+            if isinstance(e, ProcessingError):
+                raise e
             raise ProcessingError(f"Unexpected error during transcription: {str(e)}")
 
         txt_path = wav_path + ".txt"
@@ -165,7 +182,9 @@ class TranscriptionPipeline:
         """
         # Since urllib is synchronous, we wrap the call in a thread to keep the loop free
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._call_ollama, HINGLISH_PROMPT_TEMPLATE.format(text=raw_text))
+        return await loop.run_in_executor(
+            None, self._call_ollama, HINGLISH_PROMPT_TEMPLATE.format(text=raw_text)
+        )
 
     async def convert_to_native_script(self, cleaned_text, full_conversion=False):
         """
@@ -173,34 +192,44 @@ class TranscriptionPipeline:
         """
         script_name = TARGET_SCRIPT if TARGET_SCRIPT else "Hindi (Devnagari)"
 
-        # Determine if we are translating or just converting scripts (Hindi is usually conversion)
-        is_translation = "Hindi" not in script_name
+        # Professional role based on the target language
+        system_role = f"You are a professional translator specializing in translating Romanized Hinglish into {script_name}. Your goal is to provide a perfect translation that maintains the original meaning and tone."
 
-        rule = (
-            f"1. ABSOLUTE REQUIREMENT: Translate and convert ALL words (including English) into the {script_name} script. Do NOT use Latin or Roman characters under any circumstances."
-            if full_conversion
-            else f"1. ABSOLUTE REQUIREMENT: Translate and convert Hindi/Hinglish words into the {script_name} script. 2. Keep technical, brand, or proper English words in English (Latin script)."
-        )
+        # Determine the rules based on the conversion type
+        if full_conversion:
+            rule = (
+                f"1. ABSOLUTE REQUIREMENT: Translate the entire text into formal {script_name}. "
+                f"2. Use the native script of {script_name}. "
+                f"3. Ensure no Hinglish or Romanized Hindi terms remain. "
+                f"4. If the native script is NOT Latin, do NOT use any Latin characters."
+            )
+        else:
+            rule = (
+                f"1. ABSOLUTE REQUIREMENT: Translate the meaning of the Romanized Hinglish text into the {script_name} language and its native script. "
+                f"2. If {script_name} uses a non-Latin script, do NOT use any Latin characters (except for technical terms or brands). "
+                f"3. Maintain the original meaning, tone, and punctuation."
+            )
 
-        # Few-shot examples to anchor the model to the correct script and language
+        # Provide a concrete example of the translation process to anchor the model
+        # We use a simple example and tell the model to apply the SAME LOGIC to the target language
         examples = (
-            f"Example 1 (Partial):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में laptop है' (If {script_name} is Hindi)\n\n"
-            f"Example 2 (Full):\nInput: 'Mere ghar mein laptop hai'\nOutput: 'मेरे घर में लैपटॉप है' (If {script_name} is Hindi)\n\n"
-            f"Note: The input is Romanized Hinglish. If the target script is not Hindi, you MUST translate the meaning of the Hinglish words into the {script_name} language before writing them in the {script_name} script."
+            "Translation Example (Hinglish to English):\n"
+            "Input: 'Mere ghar mein laptop hai'\n"
+            "Output: 'I have a laptop in my house.'\n\n"
+            f"Now, apply this same translation logic to output the text in {script_name}."
         )
 
-        # Reinforced prompt to fight LLM bias
+        # Reinforced prompt to fight LLM bias and prevent language drift
         prompt = (
-            f"You are a highly skilled linguist specializing in the {script_name} language and script. "
-            f"Your task is to translate the following Romanized Hinglish text into the {script_name} script.\n\n"
+            f"{system_role}\n\n"
+            f"TASK: Translate the following Romanized Hinglish text into {script_name}.\n\n"
             f"CRITICAL CONSTRAINTS:\n{rule}\n"
-            "3. Maintain the original meaning and punctuation.\n"
-            f"4. OUTPUT ONLY the converted text in {script_name} script. Do not include any English explanations, introductory text, or comments.\n"
-            f"5. If you output any text in a script other than {script_name}, the task is failed.\n\n"
-            f"REFERENCE EXAMPLES:\n{examples}\n\n"
-            f"Text to convert:\n{cleaned_text}"
+            f"5. OUTPUT ONLY the translated text in {script_name}. Do not include any explanations, introductory text, or comments.\n"
+            f"6. If you output any text in a language other than {script_name}, the task is failed.\n\n"
+            f"REFERENCE EXAMPLE:\n{examples}\n\n"
+            f"Text to translate:\n{cleaned_text}"
         )
-        
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._call_ollama, prompt)
 
@@ -260,6 +289,7 @@ class TranscriptionPipeline:
         Coordinate the first part: Preprocess -> Transcribe -> Refine (Hinglish).
         """
         import time
+
         start_time = time.time()
 
         if debug:
@@ -288,21 +318,21 @@ class TranscriptionPipeline:
 
         if active_tasks is not None:
             active_tasks[task_id] = {"status": "ffmpeg", "start_time": start_time}
-        
+
         wav_path = await self.preprocess_audio(
             source_path, task_id, active_tasks, debug=debug
         )
 
         if active_tasks is not None:
             active_tasks[task_id]["status"] = "whisper"
-        
+
         raw_text = await self.transcribe(
             wav_path, model_path, task_id, active_tasks, debug=debug
         )
 
         if active_tasks is not None:
             active_tasks[task_id]["status"] = "ollama"
-        
+
         refined_text = await self.refine_text(raw_text)
 
         total_duration = time.time() - start_time
