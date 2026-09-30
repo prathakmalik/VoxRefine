@@ -203,10 +203,11 @@ async def stop_task(task_id: str):
 @app.post("/convert-native-script")
 async def convert_native_script(request: dict):
     """Translate and convert cleaned Hinglish text to the configured native script."""
-    logger.info(f"Converting text to native script: {settings.TARGET_SCRIPT}")
-
     text = request.get("text")
     full_conversion = request.get("full_conversion", False)
+    conv_type = "Full" if full_conversion else "Partial"
+
+    logger.info(f"Converting text to native script: {settings.TARGET_SCRIPT} ({conv_type})")
 
     if not text:
         raise HTTPException(status_code=400, detail="No text provided for conversion")
