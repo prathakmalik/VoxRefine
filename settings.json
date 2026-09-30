@@ -1,6 +1,0 @@
-{
-    "OLLAMA_API_URL": "https://ollama.com/api/chat",
-    "OLLAMA_MODEL": "gemma4:31b",
-    "OLLAMA_API_KEY": "83ad6a2eeac14106899ccd6ddfb5e69f.dEh-07M8YjscEPNEmHOZAFTm",
-    "TARGET_SCRIPT": "Hindi (Devnagari)"
-}
