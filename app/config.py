@@ -33,8 +33,13 @@ else:
     MODEL_MAP = {}
 
 # Default Ollama API configuration
+# You can configure these directly here or via the application UI (which saves to settings.json)
+# At least one of the following must be configured correctly for the app to work:
+# 1. Local: OLLAMA_API_URL points to your local instance (default: http://localhost:11434/api/generate)
+# 2. Cloud: OLLAMA_API_URL points to the cloud API (e.g., https://ollama.com/api/chat) AND OLLAMA_API_KEY is provided.
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "gemma4:31b-cloud"
+OLLAMA_API_KEY = None
 DEFAULT_TARGET_SCRIPT = "Hindi (Devnagari)"
 
 # Load overrides from settings.json if it exists
@@ -46,6 +51,7 @@ if SETTINGS_FILE.exists():
             settings = json.load(f)
             OLLAMA_API_URL = settings.get("OLLAMA_API_URL", OLLAMA_API_URL)
             OLLAMA_MODEL = settings.get("OLLAMA_MODEL", OLLAMA_MODEL)
+            OLLAMA_API_KEY = settings.get("OLLAMA_API_KEY", OLLAMA_API_KEY)
     except Exception as e:  # noqa: BLE001
         print(f"Warning: Failed to load settings.json: {e}")
 
