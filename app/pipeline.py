@@ -80,8 +80,9 @@ class TranscriptionPipeline:
             )
 
             if task_id and active_tasks is not None:
-                if isinstance(active_tasks[task_id], dict):
-                    active_tasks[task_id]["process"] = process
+                task_data = active_tasks.get(task_id)
+                if isinstance(task_data, dict):
+                    task_data["process"] = process
                 else:
                     active_tasks[task_id] = process
 
@@ -107,6 +108,7 @@ class TranscriptionPipeline:
         except Exception as e:
             if isinstance(e, ProcessingError):
                 raise
+            logger.exception(f"Unexpected FFmpeg error during task {task_id}: {e!s}")
             raise ProcessingError(f"Unexpected FFmpeg error: {e!s}")
 
         return target_wav
@@ -153,6 +155,7 @@ class TranscriptionPipeline:
         except Exception as e:
             if isinstance(e, ProcessingError):
                 raise e
+            logger.exception(f"Unexpected error during transcription for task {task_id}: {e!s}")
             raise ProcessingError(f"Unexpected error during transcription: {e!s}")
 
         txt_path = wav_path + ".txt"
@@ -194,9 +197,16 @@ class TranscriptionPipeline:
         else:
             rule = (
                 f"1. ABSOLUTE REQUIREMENT: Translate the meaning of the Romanized Hinglish text into the {script_name} language and its native script. "
-                f"2. Keep technical terms, brand names, and specific English nouns in the original Latin script. "
+                f"2. STRICT CONSTRAINT: Keep all technical terms, brand names, and specific English nouns (e.g., 'laptop', 'iPhone', 'Google') EXACTLY in their original Latin script. "
                 f"3. For all other words, use the native script of {script_name}. "
                 f"4. Maintain the original meaning, tone, and punctuation."
+            )
+            # Add a specific example for partial conversion to guide the model
+            examples = (
+                f"Partial Conversion Example:\n"
+                f"Input: 'Mere ghar mein laptop hai'\n"
+                f"Output: 'मेरे घर में laptop है'\n\n"
+                f"Now, apply this same logic: preserve English technical terms while translating the rest into {script_name}."
             )
 
         # Provide a concrete example of the translation process to anchor the model
@@ -306,6 +316,7 @@ class TranscriptionPipeline:
     ):
         """
         Coordinate the first part: Preprocess -> Transcribe -> Refine (Hinglish).
+        Returns raw_text, refined_text, and total_duration.
         """
         import time
         start_time = time.time()
@@ -351,7 +362,11 @@ class TranscriptionPipeline:
         if active_tasks is not None:
             active_tasks[task_id]["status"] = "ollama"
 
-        refined_text = await self.refine_text(raw_text)
+        try:
+            refined_text = await self.refine_text(raw_text)
+        except Exception as e:
+            logger.error(f"Refinement failed for task {task_id}: {e}")
+            refined_text = None
 
         total_duration = time.time() - start_time
         return raw_text, refined_text, total_duration

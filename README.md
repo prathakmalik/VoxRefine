@@ -3,7 +3,7 @@
 VoxRefine is a professional audio-to-text pipeline designed to handle the complexities of code-switching (e.g., Hinglish) and script conversion. It takes raw audio, transcribes it using Whisper, cleans the grammar and slang using AI, and can convert the final output into any native script (like Devnagari, Tamil, Telugu, etc.).
 
 ## 🚀 Features
-- **Modern AI Studio UI**: A professional, dark-themed dashboard with real-time pipeline tracking, side-by-side result comparison (Raw $\rightarrow$ Refined $\rightarrow$ Native), and a responsive layout.
+- **Modern AI Studio UI**: A professional, theme-aware dashboard (Dark/Light) with real-time pipeline tracking, side-by-side result comparison (Raw $\rightarrow$ Refined $\rightarrow$ Native), and a responsive layout.
 - **Hardware-Aware Setup**: Automatically detects NVIDIA GPUs and installs CUDA-accelerated binaries for maximum speed.
 - **Intelligent Refinement**: Uses LLMs (via Ollama) to fix typos, slang, and grammar in Romanized scripts.
 - **Dynamic Multi-Script Support**: Convert Romanized Hinglish into any native script configured in the settings, with options to either keep English technical terms or perform a full conversion.

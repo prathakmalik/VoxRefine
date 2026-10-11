@@ -127,29 +127,32 @@ async def transcribe(request: TranscribeRequest):
 
         debug_mode = logging.getLogger("VoxRefine").getEffectiveLevel() == logging.DEBUG
 
-        raw_text, refined_text, duration = await pipeline.run_pipeline(
-            request.path,
-            request.model,
-            MODEL_MAP,
-            task_id=task_id,
-            active_tasks=active_tasks,
-            debug=debug_mode,
-        )
-        return {"raw_text": raw_text, "refined_text": refined_text, "task_id": task_id, "duration": duration}
-    except DependencyError as e:
-        raise HTTPException(
-            status_code=503, detail=f"System dependency missing: {e!s}"
-        )
-    except ModelNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Model not found: {e!s}")
-    except ExternalServiceError as e:
-        raise HTTPException(
-            status_code=503, detail=f"Ollama service unavailable: {e!s}"
-        )
-    except ProcessingError as e:
-        raise HTTPException(status_code=422, detail=f"Processing error: {e!s}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {e!s}")
+        try:
+            # Use the pipeline orchestration method to handle preprocess -> transcribe -> refine
+            raw_text, refined_text, duration = await pipeline.run_pipeline(
+                request.path,
+                request.model,
+                MODEL_MAP,
+                task_id=task_id,
+                active_tasks=active_tasks,
+                debug=debug_mode,
+            )
+            return {"raw_text": raw_text, "refined_text": refined_text, "task_id": task_id, "duration": duration}
+        except DependencyError as e:
+            raise HTTPException(
+                status_code=503, detail=f"System dependency missing: {e!s}"
+            )
+        except ModelNotFoundError as e:
+            raise HTTPException(status_code=404, detail=f"Model not found: {e!s}")
+        except ExternalServiceError as e:
+            raise HTTPException(
+                status_code=503, detail=f"Ollama service unavailable: {e!s}"
+            )
+        except ProcessingError as e:
+            raise HTTPException(status_code=422, detail=f"Processing error: {e!s}")
+        except Exception as e:
+            logger.exception(f"Unexpected error during transcription pipeline for task {task_id}: {e!s}")
+            raise HTTPException(status_code=500, detail=f"Unexpected error: {e!s}")
     finally:
         # Cleanup: Remove the task from the registry and delete temporary files
         active_tasks.pop(task_id, None)
@@ -222,6 +225,7 @@ async def convert_native_script(request: dict):
     except ProcessingError as e:
         raise HTTPException(status_code=422, detail=f"Processing error: {e!s}")
     except Exception as e:
+        logger.exception(f"Unexpected error during native script conversion: {e!s}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e!s}")
 
 
@@ -258,6 +262,7 @@ async def save_settings(request: SettingsRequest):
 
         return {"status": "Settings saved successfully"}
     except Exception as e:
+        logger.exception(f"Error saving settings: {e!s}")
         raise HTTPException(
             status_code=500, detail=f"Failed to save settings: {e!s}"
         )
@@ -275,7 +280,8 @@ async def clear_temp():
                 shutil.rmtree(file_path)
         return {"status": "cleaned"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to clear temp: {e}")
+        logger.exception(f"Error clearing temp directory: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear temp: {e!s}")
 
 
 if __name__ == "__main__":
