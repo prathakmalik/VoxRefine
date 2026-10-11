@@ -9,40 +9,131 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         
+        :root {
+            --bg-main: #020617;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border-color: rgba(51, 65, 85, 0.5);
+            --accent-color: #6366f1;
+        }
+
+        .light-theme {
+            --bg-main: #f1f5f9;
+            --bg-card: rgba(255, 255, 255, 0.95);
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --border-color: rgba(203, 213, 225, 0.8);
+            --accent-color: #4f46e5;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #020617; /* slate-950 */
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
         .mono { font-family: 'JetBrains Mono', monospace; }
         .glass {
-            background: rgba(30, 41, 59, 0.7);
+            background: var(--bg-card);
             backdrop-filter: blur(12px);
-            border: 1px solid rgba(51, 65, 85, 0.5);
+            border: 1px solid var(--border-color);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
         }
         .status-step {
             transition: all 0.3s ease;
         }
         .status-active {
-            color: #6366f1; /* indigo-500 */
+            color: var(--accent-color);
             font-weight: 600;
         }
         .status-complete {
-            color: #10b981; /* emerald-500 */
+            color: #10b981;
         }
-        .status-pending {
-            color: #475569; /* slate-500 */
+        .status-error {
+            border: 2px solid #ef4444 !important;
+            background-color: rgba(239, 68, 68, 0.05) !important;
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
         }
-        .loader {
-            border-top-color: #6366f1;
-            animation: spinner 0.6s linear infinite;
+        .glass.status-error {
+            border: 2px solid #ef4444 !important;
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+        }
+        .btn-disabled {
+            opacity: 0.5;
+            cursor: not-allowed !important;
+            pointer-events: none !important;
         }
         @keyframes spinner {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* Light theme specific overrides for a clean, professional look */
+        .light-theme {
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --accent-color: #4f46e5;
+        }
+        
+        /* Light theme specific overrides for a clean, professional look */
+        /* Light theme specific overrides for high contrast */
+        .light-theme .glass {
+            background: #ffffff !important;
+            backdrop-filter: none !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        }
+        .light-theme textarea {
+            color: #1e293b !important;
+            background-color: #ffffff !important;
+        }
+        .light-theme .text-slate-400, .light-theme .text-slate-500 {
+            color: #64748b !important;
+        }
+        .light-theme .text-indigo-300, .light-theme .text-white {
+            color: #1e293b !important;
+        }
+        .light-theme .text-indigo-400 {
+            color: #4338ca !important;
+        }
+        .light-theme .bg-slate-950, 
+        .light-theme .bg-slate-800\/50, 
+        .light-theme .bg-slate-900\/50,
+        .light-theme .bg-slate-800 {
+            background-color: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #0f172a !important;
+        }
+        .light-theme .glass.status-error {
+            border: 2px solid #ef4444 !important;
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+            background-color: rgba(239, 68, 68, 0.05) !important;
+        }
+        .light-theme .status-pending {
+            color: #94a3b8 !important;
+        }
+        .light-theme .status-step div {
+            background-color: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+            color: #475569 !important;
+        }
+        .light-theme .status-active div {
+            background-color: var(--accent-color) !important;
+            border-color: var(--accent-color) !important;
+            color: white !important;
+        }
+        .light-theme .status-complete div {
+            background-color: #dcfce7 !important;
+            border-color: #10b981 !important;
+            color: #065f46 !important;
+        }
     </style>
 </head>
-<body class="text-slate-200 min-h-screen pb-12">
+<body class="text-slate-200 min-h-screen pb-12 transition-colors duration-300">
 
     <!-- Header -->
     <nav class="border-b border-slate-800 bg-slate-900/50 sticky top-0 z-50 backdrop-blur-md">
@@ -54,6 +145,9 @@
                 <h1 class="text-xl font-bold tracking-tight text-white">VoxRefine <span class="text-indigo-400 font-medium text-sm ml-2">v1.0</span></h1>
             </div>
             <div class="flex items-center gap-4">
+                <button id="themeToggle" class="p-2 rounded-lg hover:bg-slate-800 transition-colors text-slate-400 hover:text-white">
+                    <i class="fas fa-moon text-lg" id="themeIcon"></i>
+                </button>
                 <div id="healthBadge" class="px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2 transition-colors duration-300">
                     <span class="w-2 h-2 rounded-full bg-current"></span>
                     <span id="healthText">Checking Health...</span>
@@ -75,7 +169,7 @@
                         <div class="flex gap-2">
                             <input type="text" id="filePath" placeholder="C:\path\to\your\file.mp4" 
                                    class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
-                            <button id="browseBtn" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+                            <button id="browseBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 shadow-lg shadow-indigo-500/20">
                                 <i class="fas fa-folder-open"></i> Browse
                             </button>
                         </div>
@@ -138,29 +232,29 @@
         <section id="resultsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-6 opacity-40 pointer-events-none transition-opacity duration-500">
             
             <!-- Raw Transcription -->
-            <div class="glass rounded-2xl flex flex-col h-full">
+            <div class="glass rounded-2xl flex flex-col h-auto">
                 <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between rounded-t-2xl">
                     <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400">Raw Transcription</h3>
                     <button onclick="copyText('resultText')" class="text-slate-500 hover:text-white transition-colors p-1">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
-                <textarea id="resultText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-y rounded-b-2xl" placeholder="Waiting for transcription..."></textarea>
+                <textarea id="resultText" readonly class="w-full min-h-[400px] bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-y rounded-b-2xl" placeholder="Waiting for transcription..."></textarea>
             </div>
 
             <!-- Refined Hinglish -->
-            <div class="glass rounded-2xl flex flex-col h-full border-indigo-500/20">
+            <div class="glass rounded-2xl flex flex-col h-auto border-indigo-500/20">
                 <div class="px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center justify-between rounded-t-2xl">
                     <h3 class="text-xs font-bold uppercase tracking-widest text-indigo-400">Refined Hinglish</h3>
                     <button onclick="copyText('refinedText')" class="text-slate-500 hover:text-white transition-colors p-1">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
-                <textarea id="refinedText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-y rounded-b-2xl" placeholder="Waiting for refinement..."></textarea>
+                <textarea id="refinedText" readonly class="w-full min-h-[400px] bg-transparent p-4 text-sm mono text-slate-300 outline-none resize-y rounded-b-2xl" placeholder="Waiting for refinement..."></textarea>
             </div>
 
             <!-- Native Script -->
-            <div class="glass rounded-2xl flex flex-col border-indigo-500/30 h-full">
+            <div class="glass rounded-2xl flex flex-col border-indigo-500/30 h-auto">
                 <div class="px-4 py-3 bg-indigo-900/20 border-b border-slate-800 flex items-center justify-between rounded-t-2xl">
                     <h3 id="nativeScriptResultLabel" class="text-xs font-bold uppercase tracking-widest text-indigo-400">Native Script</h3>
                     <button onclick="copyText('nativeText')" class="text-slate-500 hover:text-white transition-colors p-1">
@@ -188,7 +282,7 @@
                     </button>
                 </div>
 
-                <textarea id="nativeText" readonly class="flex-1 w-full min-h-[400px] bg-transparent p-4 text-sm mono text-white outline-none resize-y rounded-b-2xl" placeholder="Waiting for conversion..."></textarea>
+                <textarea id="nativeText" readonly class="w-full min-h-[400px] bg-transparent p-4 text-sm mono text-white outline-none resize-y rounded-b-2xl" placeholder="Waiting for conversion..."></textarea>
             </div>
         </section>
     </main>
@@ -230,6 +324,35 @@
     <div id="toast-container" class="fixed bottom-6 right-6 z-[200] flex flex-col gap-3"></div>
 
     <script>
+        // --- Theme Management ---
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+
+        function applyTheme(theme) {
+            if (theme === 'light') {
+                document.body.classList.add('light-theme');
+                themeIcon.className = 'fas fa-sun text-lg';
+            } else {
+                document.body.classList.remove('light-theme');
+                themeIcon.className = 'fas fa-moon text-lg';
+            }
+            localStorage.setItem('theme', theme);
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            applyTheme(savedTheme);
+        }
+
+        if (themeToggle) {
+            themeToggle.onclick = () => {
+                const currentTheme = document.body.classList.contains('light-theme') ? 'dark' : 'light';
+                applyTheme(currentTheme);
+            };
+        }
+
+        initTheme();
+
         // --- DOM Elements ---
         const filePathInput = document.getElementById('filePath');
         const browseBtn = document.getElementById('browseBtn');
@@ -381,7 +504,7 @@
             resultText.value = '';
             refinedText.value = '';
             nativeText.value = '';
-            resultsSection.classList.add('opacity-40', 'pointer-events-none');
+            resultsSection.classList.remove('opacity-40', 'pointer-events-none');
             setStatus('Initializing...', 'loading');
 
             currentAbortController = new AbortController();
@@ -395,7 +518,7 @@
                     const statusData = await statusRes.json();
                     if (statusData.status === 'processing') {
                         const stage = statusData.stage || 'unknown';
-                        const stageNames = { 'ffmpeg': 'FFmpeg', 'whisper': 'Whisper', 'ollama': 'Ollama' };
+                        const stageNames = { 'ffmpeg': 'FFmpeg', 'whisper': 'Whisper', 'ollama': 'AI Refinement' };
                         setStatus(`Processing... (${stageNames[stage] || stage})`, 'loading');
                         
                         // Update Stepper
@@ -423,7 +546,20 @@
 
                 const data = await response.json();
                 resultText.value = data.raw_text; 
-                refinedText.value = data.refined_text; 
+                
+                if (data.refined_text) {
+                    refinedText.value = data.refined_text;
+                    document.getElementById('refinedText').parentElement.classList.remove('status-error');
+                    document.getElementById('convertBtn').classList.remove('btn-disabled');
+                } else {
+                    refinedText.value = "Refinement failed. Please check Ollama service.";
+                    // Target the parent element of the textarea which is the glass card
+                    const refinedCard = document.getElementById('refinedText').closest('.glass');
+                    if (refinedCard) {
+                        refinedCard.classList.add('status-error');
+                    }
+                    document.getElementById('convertBtn').classList.add('btn-disabled');
+                }
                 
                 resultsSection.classList.remove('opacity-40', 'pointer-events-none');
                 updateStep('ollama', 'complete');
