@@ -194,9 +194,16 @@ class TranscriptionPipeline:
         else:
             rule = (
                 f"1. ABSOLUTE REQUIREMENT: Translate the meaning of the Romanized Hinglish text into the {script_name} language and its native script. "
-                f"2. Keep technical terms, brand names, and specific English nouns in the original Latin script. "
+                f"2. STRICT CONSTRAINT: Keep all technical terms, brand names, and specific English nouns (e.g., 'laptop', 'iPhone', 'Google') EXACTLY in their original Latin script. "
                 f"3. For all other words, use the native script of {script_name}. "
                 f"4. Maintain the original meaning, tone, and punctuation."
+            )
+            # Add a specific example for partial conversion to guide the model
+            examples = (
+                f"Partial Conversion Example:\n"
+                f"Input: 'Mere ghar mein laptop hai'\n"
+                f"Output: 'मेरे घर में laptop है'\n\n"
+                f"Now, apply this same logic: preserve English technical terms while translating the rest into {script_name}."
             )
 
         # Provide a concrete example of the translation process to anchor the model
